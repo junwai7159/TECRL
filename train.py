@@ -8,7 +8,7 @@ import torch
 import json
 import logging
 from model.ppo import PPO
-from environment.pedsim import Pedsim
+from envs.pedsim import Pedsim
 from utils.utils import init_env, get_args, set_seed, pack_state
 from utils.visualization_cv import generate_gif
 
@@ -42,14 +42,15 @@ if __name__ == '__main__':
         open(os.path.join(save_path, f'rewards.log'), 'a').write(f'{str(reward)} {" ".join([str(r) for r in detail.values()])}\n')
         
         # save (at epoch 100, 200, ..., 900, 1000, 2000, ..., 9000, ...)
-        if episode >= 100 and str(episode)[1:] == '0' * len(str(episode)[1:]):
+        if episode > 0:
+        #if episode >= 100 and str(episode)[1:] == '0' * len(str(episode)[1:]):
             # save model
             torch.save(model.state_dict(), os.path.join(save_path, f'model_{episode}.bin'))
             # save GIF visualization
             for t in range(200):
                 mask = env.mask[:, -1] & ~env.arrive_flag[:, -1]
                 if not mask.any(): break
-                action = torch.full((env.num_pedestrians, 2), torch.nan, device=env.device)
+                action = torch.full((env.num_pedestrians, 2), float('nan'), device=env.device)
                 action[mask, :], _ = model(pack_state(*env.get_state())[mask], explore=True)
                 env.action(action[:, 0], action[:, 1], enable_nan_action=True)
             generate_gif(env, os.path.join(save_path, f'demo_{episode}.gif'))

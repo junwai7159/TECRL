@@ -9,7 +9,7 @@ from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors
-from environment.pedsim import Pedsim
+from envs.pedsim import Pedsim
 from model.ppo import PPO
 from utils.visualization import Visualization
 from utils.utils import get_args, init_env, set_seed, pack_state
@@ -28,7 +28,7 @@ if __name__ == '__main__':
             mask = env.mask[:, -1] & ~env.arrive_flag[:, -1]
             if not mask.any():
                 return False
-            action = torch.full((env.num_pedestrians, 2), torch.nan, device=env.device)
+            action = torch.full((env.num_pedestrians, 2), float('nan'), device=env.device)
             state = pack_state(*env.get_state())
             action[mask, :], _ = model(state[mask], explore=True)
             env.action(action[:, 0], action[:, 1], enable_nan_action=True)

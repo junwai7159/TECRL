@@ -1,7 +1,7 @@
 import torch
 import os
 import pickle
-from environment.pedsim import Pedsim
+from envs.pedsim import Pedsim
 from tqdm import tqdm
 from utils.utils import mod2pi, get_ttcmd
 
@@ -96,7 +96,7 @@ def imitate_env(env_real, action_func, start_index=0, end_index=-1, show_tqdm=Tr
             mask = env.mask[:, -1] & ~exit_flag
         else:
             mask = env.mask[:, -1] & ~env.arrive_flag[:, -1]
-        action = torch.full((env.num_pedestrians, 2), torch.nan, device=env.device)
+        action = torch.full((env.num_pedestrians, 2), float('nan'), device=env.device)
         if mask.any():
             if cheat: action[mask, :] = action_func(env, mask, env_real.position[:, t, :])
             else:     action[mask, :] = action_func(env, mask)

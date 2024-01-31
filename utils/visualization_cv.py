@@ -1,6 +1,6 @@
 import cv2
 import matplotlib.pyplot as plt
-from environment.pedsim import Pedsim
+from envs.pedsim import Pedsim
 import torch
 import numpy as np
 from utils.utils import get_args, mod2pi
@@ -114,15 +114,15 @@ def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None
             ]), (H, W), borderValue=(0, 0, 0))
             # 旋转画面
             # if 'ang' not in dir(): 
-            #     ang = env.direction[focus_id, t, 0] / torch.pi * 180
+            #     ang = env.direction[focus_id, t, 0] / np.pi * 180
             # # vec = env.position[focus_id, max(0, t - int(2. * fps)):t + 1, :]
             # # vec = vec[~vec.isnan().any(dim=-1), :]
             # # vec = vec[-1] - vec[0]
-            # # ang = .9 * ang + .1 * torch.atan2(vec[1], vec[0]) / torch.pi * 180
+            # # ang = .9 * ang + .1 * torch.atan2(vec[1], vec[0]) / np.pi * 180
             # tmp = env.direction[focus_id, max(0, t - int(2. * fps)):t + 1, 0]
             # alpha = 0.1 / tmp[~tmp.isnan()].std().clamp(1.)
             # if ~alpha.isnan():
-            #     ang = (1 - alpha) * ang + (alpha) * env.direction[focus_id, t, 0] / torch.pi * 180
+            #     ang = (1 - alpha) * ang + (alpha) * env.direction[focus_id, t, 0] / np.pi * 180
             # im = cv2.warpAffine(im, cv2.getRotationMatrix2D(
             #     (W / 2, H / 2), angle=90 - int(ang), scale=1.
             # ), (H, W), borderValue=(128, 128, 128))

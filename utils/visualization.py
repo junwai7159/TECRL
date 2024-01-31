@@ -229,9 +229,9 @@ class Visualization:
         for idx in range(self.env.num_pedestrians):
             p = self.env.position[idx, time_step, :]
             d = self.env.direction[idx, time_step, 0]
-            r = 1.15 * self.env.ped_radius if self.ctrl_widget['direc'].value() else torch.nan
+            r = 1.15 * self.env.ped_radius if self.ctrl_widget['direc'].value() else float('nan')
             self.view_widget['direc'][idx].setPos(p[0] + r * d.cos(), p[1] + r * d.sin())
-            self.view_widget['direc'][idx].setStyle(angle=180 + d * 180 / torch.pi)
+            self.view_widget['direc'][idx].setStyle(angle=180 + d * 180 / np.pi)
 
         # 更新障碍物位置
         self.view_widget['obs'].setData(*self.env.obstacle.T if self.env.obstacle is not None else [])
@@ -251,7 +251,7 @@ class Visualization:
         if 0 <= focus < self.env.num_pedestrians and self.env.mask[focus, time_step] and self.ctrl_widget['des'].value():
             d = self.env.destination[focus, :] - self.env.position[focus, time_step, :]
             r = d.norm(dim=-1)
-            a = torch.atan2(d[1], d[0]) / torch.pi * 180
+            a = torch.atan2(d[1], d[0]) / np.pi * 180
             self.view_widget['arrow'].setPos(*self.env.destination[focus, :])
             self.view_widget['arrow'].setStyle(tailLen=r-0.3, brush='blue', angle=a + 180)
         else:
@@ -265,7 +265,7 @@ class Visualization:
             a = torch.atan2(s_ext[focus, :, 1], s_ext[focus, :, 2]) + self.env.direction[focus, time_step, 0]
             if self.model is not None:
                 weight = self.model.attention.get_weight(self.model.feature(s_ext[focus]))  # (20, 5) -> (20, 1)
-                weight01 = torch.where(~weight.isnan(), weight, -torch.inf).softmax(dim=0)
+                weight01 = torch.where(~weight.isnan(), weight, -float('inf')).softmax(dim=0)
                 color = torch.tensor([[255, 255, 0]]) - weight01 * torch.tensor([[0, 255, 0]])
             else:
                 color = None
@@ -275,7 +275,7 @@ class Visualization:
             for idx, ray in enumerate(self.view_widget['ray']):
                 brush = tuple(color[idx]) if color is not None else 'orange'
                 ray.setPos(p[0] + r[idx] * a[idx].cos(), p[1] + r[idx] * a[idx].sin())
-                ray.setStyle(tailLen=s_ext[focus, idx, 0] - 0.3, brush=brush, angle=a[idx] * 180 / torch.pi + 180)
+                ray.setStyle(tailLen=s_ext[focus, idx, 0] - 0.3, brush=brush, angle=a[idx] * 180 / np.pi + 180)
         else:
             for idx, ray in enumerate(self.view_widget['ray']):
                 ray.setStyle(brush=None)

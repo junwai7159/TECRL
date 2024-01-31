@@ -69,19 +69,19 @@ class PPO(torch.nn.Module):
 
     def generate_s(self, state):
         s_self, s_int, s_ext = unpack_state(state)
-        s_int_ = torch.concat([s_self, s_int], dim=-1)
+        s_int_ = torch.cat([s_self, s_int], dim=-1)
         s_int_merge = self.feature2(s_int_)
         mask = torch.any(torch.isnan(s_ext), dim=-1, keepdim=True)
         s_ext_ = s_ext.masked_fill(mask, 0.)
         s_ext_feat = self.feature(s_ext_).masked_fill(mask, 0.)
         s_ext_merge = self.attention(s_ext_feat, ~mask)
-        return torch.concat([s_int_merge, s_ext_merge], dim=-1)
+        return torch.cat([s_int_merge, s_ext_merge], dim=-1)
 
     def forward(self, state, explore=False, mask=None):
         with torch.no_grad():
             if mask is not None:
-                action = torch.full((state.shape[0], 2), torch.nan, device=self.ARGS.DEVICE)
-                logprob = torch.full((state.shape[0], 1), torch.nan, device=self.ARGS.DEVICE)
+                action = torch.full((state.shape[0], 2), float('nan'), device=self.ARGS.DEVICE)
+                logprob = torch.full((state.shape[0], 1), float('nan'), device=self.ARGS.DEVICE)
                 if mask.any():
                     action[mask, :], logprob[mask, :] = self.pi(self.generate_s(state[mask, :]), explore=explore)
             else:
@@ -161,7 +161,7 @@ class PPO(torch.nn.Module):
                 if key not in total_detail_reward:
                     total_detail_reward[key] = 0.0
                 total_detail_reward[key] += torch.mean(rwd['VALUE']).item()
-
+                
             if torch.any(env.arrive_flag[:, -1]):
                 done = True
             if train:

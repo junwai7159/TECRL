@@ -34,11 +34,11 @@ class Attention(nn.Module):
     def forward(self, s, mask):
         shape = s.shape
         log_weight = self.seq(s)  # (N, 20, 128) -> (N, 20, 1)
-        log_weight_ = log_weight.masked_fill(~mask, -torch.inf)
+        log_weight_ = log_weight.masked_fill(~mask, -float('inf'))
         weight = torch.softmax(log_weight_, dim=-2)  # N, 20, 1
         # 若 mask 中全是 False (即一个东西也没有) , 则 softmax 将得到一组 nan, 这里将 nan 全部设置为 0.
         weight_ = weight.masked_fill(~mask, 0)  # N, 20, 1
-        s_ = torch.einsum('Nof,No->Nf', s, weight_.squeeze(-1))
+        s_ = torch.einsum('nof,no->nf', s, weight_.squeeze(-1))
         return s_
 
     def get_weight(self, s):

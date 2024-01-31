@@ -6,10 +6,10 @@ import setproctitle
 import os
 import sys
 
+########## STATE ##########
 def pack_state(s_self, s_int, s_ext):  # (N, 1) & (N, 5) & (N, 20, 5) -> (N, 106)
     s = torch.cat([s_self, s_int, s_ext.view(s_ext.shape[0], -1)], dim=-1)
     return s
-
 
 def unpack_state(s):  # (N, 106) -> (N, 1) & (N, 5) & (N, 20, 5)
     s_self, s_int, s_ext = s.split((1, 8, s.shape[1] - 1 - 8), dim=-1)
@@ -17,19 +17,37 @@ def unpack_state(s):  # (N, 106) -> (N, 1) & (N, 5) & (N, 20, 5)
     return s_self, s_int, s_ext
 
 
+########## ENVS ##########
+# 定义行人、障碍物、地图
+scenario_list = ['RANDOM', 'CIRCLE', 'CORRIDOR', 'CROSSING']
+
+def init_ped_circle(r, n1):
+    angles = np.linspace(0, 2*np.pi, n1, endpoint=False)
+    positions = [[round(r*np.cos(theta), 4), round(r*np.sin(theta), 4)] for theta in angles]
+    destinations = [[round(r*np.cos(theta) + np.pi, 4), round(r*np.sin(theta) + np.pi, 4)] for theta in angles]
+    return torch.tensor(positions), torch.tensor(destinations)
+
 def init_env(env, ARGS):
     n1, n2, size = ARGS.NUM_PED, ARGS.NUM_OBS, ARGS.SIZE_ENV
-    positions = torch.distributions.Uniform(-size, size).sample([n1, 2])
+
+    # Pedestrians
     velocity = 0.0 * torch.rand((n1, 2))
-    destinations = torch.distributions.Uniform(-size, size).sample([n1, 2])
+    if ARGS.SCENARIO == 'RANDOM':
+        positions = torch.distributions.Uniform(-size, size).sample([n1, 2])
+        destinations = torch.distributions.Uniform(-size, size).sample([n1, 2])
+    elif ARGS.SCENARIO == 'CIRCLE':
+        positions, destinations = init_ped_circle(, n1)
+
     env.add_pedestrian(positions, velocity, destinations, init=True)
 
+    # Obstacles
     n2 = torch.distributions.Poisson(-n2).sample().to(int).item() if n2 < 0 else n2
     if n2 > 0:
         obstacles = torch.distributions.Uniform(-1.5 * size, 1.5 * size).sample([n2, 2])
         env.add_obstacle(obstacles, init=True)
 
 
+########## CONFIG ########## 
 def get_args(**kwargs):
     parser = argparse.ArgumentParser()
 
@@ -49,6 +67,7 @@ def get_args(**kwargs):
     parser.add_argument("--RW_WORK", type=float, default=-0.01, help='reward: process work')
     parser.add_argument("--RW_ENERGY", type=float, default=-0.0015, help='reward: energy consumption')
     parser.add_argument("--RW_MENTAL", type=float, default=6.3, help='reward: mental effort')
+    parser.add_argument("--SCENARIO", type=str, default="RANDOM", help='scenario of the environment')
 
     # parameters in agents
     parser.add_argument("--MEMORY_CAPACITY", type=int, default=6000)
@@ -77,13 +96,14 @@ def get_args(**kwargs):
         print(f'[Warning] Unknown Arguments: {unknown}')
     return args
 
-
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    
+
+
+########## ACTION ########## 
 def rotate(vec, ang):
     """
     rotate a vector by a angle
@@ -149,7 +169,7 @@ def mod2pi(delta_angle):
     - -pi < x < +pi: return x
     - +pi < x < +2pi: return x - 2pi
     """
-    return torch.remainder(delta_angle + torch.pi, 2 * torch.pi) - torch.pi
+    return torch.remainder(delta_angle + np.pi, 2 * np.pi) - np.pi
 
 def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
     """
@@ -164,7 +184,7 @@ def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
     time_idx = torch.arange(T, device=env.device) # (t,)
     self_idx = torch.arange(N, device=env.device) # (n,)
     peds_idx = torch.arange(N, device=env.device) # (N,)
-    pair_idx = torch.stack(torch.meshgrid(self_idx, peds_idx, indexing='ij'), dim=-1)  # (n, N, 2)
+    pair_idx = torch.stack(torch.meshgrid(self_idx, peds_idx), dim=-1)  # (n, N, 2)
     pos = env.position[:, time_idx, :][pair_idx, :, :]  # (n, N, 2, t, 2)
     vel = env.velocity[:, time_idx, :][pair_idx, :, :]  # (n, N, 2, t, 2)
     drc = env.direction[:, time_idx, :][pair_idx, :, :]  # (n, N, 2, t, 1)
@@ -184,7 +204,7 @@ def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
 
     # calculate MASK
     dp = pos[:, :, 1] - pos[:, :, 0]  # (n, N, t, 2)
-    view = mod2pi(torch.atan2(dp[:, :, :, 1], dp[:, :, :, 0]) - drc[:, :, 0, :, 0]).abs() < torch.pi / 2  # (n, N, t)
+    view = mod2pi(torch.atan2(dp[:, :, :, 1], dp[:, :, :, 0]) - drc[:, :, 0, :, 0]).abs() < np.pi / 2  # (n, N, t)
     # zone = (xx.sqrt() - r2 < 0.45)
     # view |= zone & ((view & zone).cumsum(dim=-1) > 0)
     friend = ((xx < FRIEND_DIS ** 2).float().sum(dim=-1, keepdim=True) / pos.isnan().any(dim=-1).all(dim=2).logical_not().sum(dim=-1, keepdim=True) > FRIEND_RATIO)  # (N, N, 1)

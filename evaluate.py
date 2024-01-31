@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from model.ppo import PPO
-from environment.pedsim import Pedsim
+from envs.pedsim import Pedsim
 from utils.utils import get_args, set_seed, pack_state, mod2pi
 from utils.metrics import calc_TEC, find_CAP
 
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     meta_data, trajectoris, des, obs = np.load(ARGS.ENV, allow_pickle=True)
     N = len(trajectoris)
     T = np.max([t for traj in trajectoris for x, y, t in traj]) + 1
-    position = torch.full((N, T, 2), torch.nan, device=ARGS.DEVICE)
+    position = torch.full((N, T, 2), float('nan'), device=ARGS.DEVICE)
     for p, traj in enumerate(trajectoris):
         for x, y, t in traj:
             position[p, t, 0] = x
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         env_imit.add_pedestrian(env_real.position[:, t, :], env_real.velocity[:, t, :], env_real.destination, init=True)
         for s in range(t + 1, min(t + 101, T)):
             mask = env_imit.mask[:, -1] & ~env_imit.arrive_flag[:, -1]
-            action = torch.full((env_imit.num_pedestrians, 2), torch.nan, device=env_imit.device)
+            action = torch.full((env_imit.num_pedestrians, 2), float('nan'), device=env_imit.device)
             if mask.any():
                 action[mask, :], _ = model(pack_state(*env_imit.get_state())[mask])
             env_imit.action(action[:, 0], action[:, 1], enable_nan_action=True)
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
         # evaluate the CAP
         for i, j in CAP_start[:, :, t].nonzero():
-            view = mod2pi(env_imit.direction[i, :, 0] - torch.atan2(*(env_imit.position[j] - env_imit.position[i]).T.flip(0))).abs() < torch.pi / 2  # (T,)
+            view = mod2pi(env_imit.direction[i, :, 0] - torch.atan2(*(env_imit.position[j] - env_imit.position[i]).T.flip(0))).abs() < np.pi / 2  # (T,)
             close = (env_imit.position[j] - env_imit.position[i]).norm(dim=-1) < 1.0  # (T,)
             naway = (((env_imit.position[j] - env_imit.position[i]) * (env_imit.velocity[j] - env_imit.velocity[i])).sum(dim=-1) / (env_imit.position[j] - env_imit.position[i]).norm(dim=-1).clamp(1e-8) < 0.5)  # (T,)
             valid = (view & naway) | close  # (T,)
