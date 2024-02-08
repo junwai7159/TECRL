@@ -22,14 +22,14 @@ if __name__ == '__main__':
     meta_data, trajectoris, des, obs = np.load(ARGS.ENV, allow_pickle=True)
     N = len(trajectoris)
     T = np.max([t for traj in trajectoris for x, y, t in traj]) + 1
-    position = torch.full((N, T, 2), float('nan'), device=ARGS.DEVICE)
+    position = torch.full((N, T, 2), float('nan'), device=ARGS.DEVICE)  # (N, T, 2)
     for p, traj in enumerate(trajectoris):
         for x, y, t in traj:
             position[p, t, 0] = x
             position[p, t, 1] = y
     nan_flag = position.isnan().any(dim=-1)  # (N, T)
-    into_env = (~nan_flag) & (nan_flag.roll(1, 1))  # (N, T)
-    exit_env = (nan_flag) & (~nan_flag.roll(1, 1))  # (N, T)
+    into_env = (~nan_flag) & (nan_flag.roll(shifts=1, dims=1))  # (N, T)
+    exit_env = (nan_flag) & (~nan_flag.roll(shifts=1, dims=1))  # (N, T)
     into_env[nan_flag.logical_not().all(dim=-1), 0] = True
     exit_env[nan_flag.logical_not().all(dim=-1), 0] = True
     assert (into_env.sum(dim=1) == 1).all() and (exit_env.sum(dim=1) == 1).all(), "A pedestrian enter the env for more/less than 1 times!"
@@ -38,17 +38,15 @@ if __name__ == '__main__':
     exit_time = torch.masked_select(time, exit_env)  # (N,)
     exit_time[exit_time == 0] = T
 
-    velocity = position.diff(dim=1, prepend=position[:, (0,), :]) / meta_data['time_unit']
-    velocity[:, into_time, :] = velocity.roll(-1, 1)[:, into_time, :]
+    velocity = position.diff(dim=1, prepend=position[:, (0,), :]) / meta_data['time_unit']  # (N, T, 2)
+    velocity[:, into_time, :] = velocity.roll(shifts=-1, dims=1)[:, into_time, :]
     one_step_flag = (into_time + 1 == exit_time)
     velocity[one_step_flag, into_time[one_step_flag], :] = 0.
 
     destination = torch.FloatTensor(des)[:, 0, :2]  # (N, 2)
-    obstacle = torch.FloatTensor(obs)
-
+    obstacle = torch.FloatTensor(obs)   # (M, 2)
     env_real = Pedsim(ARGS)
     env_real.init_ped(position, velocity, destination)
-
     
     # evaluation
     CAP_flag = find_CAP(env_real)

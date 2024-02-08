@@ -44,7 +44,7 @@ class Pedsim:
             self.obstacle = obstacle
         else:
             self.obstacle = torch.cat([self.obstacle, obstacle], dim=0)
-
+        self.num_obstacles = self.obstacle.shape[0]
 
     def init_ped(self, position, velocity, destination):
         """
@@ -293,7 +293,6 @@ class Pedsim:
         direction_ = torch.atan2(velocity_[:, 1], velocity_[:, 0])
 
         self.raw_velocity = torch.cat([self.raw_velocity, velocity_[:, None, :]], dim=1)
-
         mask = ~(v.isnan() | w.isnan()).view(-1, 1) if enable_nan_action else self.mask[:, (-1,)]
         self.mask = torch.cat([self.mask, mask], dim=1)
 
@@ -390,14 +389,14 @@ class Pedsim:
         获取所有行人状态, 使用行人坐标系, 以行人为原点, 方向为极轴 (而非与目的地的连线为极轴) 
         :return:
             s_self: 当前速率 dim = [N, 1]
-            s_des: 目的地的相对位置, 方位正余弦, 远离速度, 围绕旋转速度, 当前速率 dim = [N, 5]
-            s_ped_obs: 最近若干行人&障碍物的相对位置 (极坐标表示) /速度 (法向切向表示) , dim = [N, 2 * #obstacles, 5]
+            s_des: 目的地的相对位置, 方位正余弦, 远离速度, 围绕旋转速度, 当前速率 dim = [N, 8]
+            s_ped_obs: 最近若干行人&障碍物的相对位置 (极坐标表示) /速度 (法向切向表示) , dim = [N, 2 * #obstacles, 8]
                 5 个特征包括障碍与自己的距离, 障碍相对于自己朝向的方位正余弦, 障碍远离自己的速度, 障碍围绕自己旋转的速度
         """
         s_self = self.velocity[:, index, :].norm(dim=-1, keepdim=True)
 
         s_des = xy2rscnt(pos=self.destination - self.position[:, index, :], vel=-self.velocity[:, index, :], dir=self.direction[:, index, :])
-
+        
         mask = self.mask[:, index]
         position_ = self.position[mask, index, :]
         velocity_ = self.velocity[mask, index, :]

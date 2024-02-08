@@ -19,9 +19,9 @@ class Actor(torch.nn.Module):
         N = s.shape[0]
         K = self.gmm_num
         h = self.seq(s)  # .view(N, 6 * K)
-        p = torch.softmax(h[..., :K], dim=-1) + 1e-4  # (N, K)
-        m = h[..., K:3*K].view(-1, K, 2)  # (N, K, 2)
-        s = torch.zeros([N, K, 2, 2], device=s.device)  # (N, K, 2, 2)
+        p = torch.softmax(h[..., :K], dim=-1) + 1e-4  # (N, K), mixture weights
+        m = h[..., K:3*K].view(-1, K, 2)  # (N, K, 2), mean 
+        s = torch.zeros([N, K, 2, 2], device=s.device)  # (N, K, 2, 2), covariance matrix
         s[:, :, 0, 0] = explore * F.softplus(h[:, 3*K:4*K]) + 1e-4
         s[:, :, 1, 1] = explore * F.softplus(h[:, 4*K:5*K]) + 1e-4
         s[:, :, 1, 0] = explore * h[:, 5*K:6*K]
@@ -68,14 +68,14 @@ class PPO(torch.nn.Module):
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=6400, gamma=0.9, verbose=False)
 
     def generate_s(self, state):
-        s_self, s_int, s_ext = unpack_state(state)
-        s_int_ = torch.cat([s_self, s_int], dim=-1)
-        s_int_merge = self.feature2(s_int_)
-        mask = torch.any(torch.isnan(s_ext), dim=-1, keepdim=True)
-        s_ext_ = s_ext.masked_fill(mask, 0.)
-        s_ext_feat = self.feature(s_ext_).masked_fill(mask, 0.)
-        s_ext_merge = self.attention(s_ext_feat, ~mask)
-        return torch.cat([s_int_merge, s_ext_merge], dim=-1)
+        s_self, s_int, s_ext = unpack_state(state)                  # (N, 1) & (N, 8) & (N, 20, 8)
+        s_int_ = torch.cat([s_self, s_int], dim=-1)                 # (N, 9)
+        s_int_merge = self.feature2(s_int_)                         # (N, 32)
+        mask = torch.any(torch.isnan(s_ext), dim=-1, keepdim=True)  # (N, 20, 1)
+        s_ext_ = s_ext.masked_fill(mask, 0.)                        # (N, 20, 8)
+        s_ext_feat = self.feature(s_ext_).masked_fill(mask, 0.)     # (N, 20, 128)
+        s_ext_merge = self.attention(s_ext_feat, ~mask)             # (N, 128)
+        return torch.cat([s_int_merge, s_ext_merge], dim=-1)        # (N, 160)
 
     def forward(self, state, explore=False, mask=None):
         with torch.no_grad():

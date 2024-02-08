@@ -9,29 +9,39 @@ from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors
+
 from envs.pedsim import Pedsim
 from model.ppo import PPO
+from model.sfm import SFM
+from model.orca import ORCA
+
 from utils.visualization import Visualization
 from utils.utils import get_args, init_env, set_seed, pack_state
 
 if __name__ == '__main__':
     ARGS = get_args()
     set_seed(ARGS.SEED)
-    model = PPO(ARGS).to(ARGS.DEVICE)
-    if ARGS.LOAD_MODEL is not None:
-        model.load_state_dict(torch.load(ARGS.LOAD_MODEL, map_location=torch.device(ARGS.DEVICE)))
+    # model = PPO(ARGS).to(ARGS.DEVICE)
+    # if ARGS.LOAD_MODEL is not None:
+    #     model.load_state_dict(torch.load(ARGS.LOAD_MODEL, map_location=torch.device(ARGS.DEVICE)))
     env = Pedsim(ARGS)
     init_env(env, ARGS)
+
+    model = SFM(env, ARGS)
+    state = model()
 
     def update():
         with torch.no_grad():
             mask = env.mask[:, -1] & ~env.arrive_flag[:, -1]
             if not mask.any():
                 return False
-            action = torch.full((env.num_pedestrians, 2), float('nan'), device=env.device)
-            state = pack_state(*env.get_state())
-            action[mask, :], _ = model(state[mask], explore=True)
-            env.action(action[:, 0], action[:, 1], enable_nan_action=True)
+            # action = torch.full((env.num_pedestrians, 2), float('nan'), device=env.device)
+            # state = pack_state(*env.get_state())
+            model()
+            # action[mask, :], _ = model(state[mask], explore=True)
+            # env.action(action[:, 0], action[:, 1], enable_nan_action=True)
         return True
+    
     env.update = update
     Visualization(env, model=model).play()
+

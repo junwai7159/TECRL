@@ -7,6 +7,9 @@ from utils.utils import mod2pi, get_ttcmd
 
 
 def find_CAP(env, D_max=0.45, T_max=3.5, T_reac=0.3):
+    # D_max: social distancing, the distance people tolerate others encroaching on their side
+    # T_max: avoidance lead time, temporary response range of pedestrians to future collisions
+    # T_reac: human's reaction time
     """
     find CAP in environment env, return CAP_flag
     - CAP_flag: (N, N, T), bool, (i, j, t)=1 means pedestrian i is avoiding pedestrian j at time t

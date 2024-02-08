@@ -264,8 +264,8 @@ class Visualization:
             r = s_ext[focus, :, 0]
             a = torch.atan2(s_ext[focus, :, 1], s_ext[focus, :, 2]) + self.env.direction[focus, time_step, 0]
             if self.model is not None:
-                weight = self.model.attention.get_weight(self.model.feature(s_ext[focus]))  # (20, 5) -> (20, 1)
-                weight01 = torch.where(~weight.isnan(), weight, -float('inf')).softmax(dim=0)
+                weight = self.model.attention.get_weight(self.model.feature(s_ext[focus])).detach()  # (20, 5) -> (20, 1)
+                weight01 = torch.where(~weight.isnan(), weight, -torch.tensor(float('inf'))).softmax(dim=0)
                 color = torch.tensor([[255, 255, 0]]) - weight01 * torch.tensor([[0, 255, 0]])
             else:
                 color = None
@@ -282,7 +282,7 @@ class Visualization:
 
         # 场景信息
         info = dict(
-            meanSpeed = self.env.velocity[self.env.mask[:, time_step], time_step, :].norm(dim=-1).mean().item()
+            meanSpeed = self.env.velocity[self.env.mask[:, time_step], time_step, :].norm(dim=-1).mean().item(),
         )
 
         self.ctrl_widget['info'].setData(info)
@@ -301,7 +301,7 @@ class Visualization:
             _, _, s_ext = self.env.get_state(index=time_step, include_radius=True)
             msk = ~s_ext[focus, :, 0].isnan()
             s_ext = s_ext[focus, msk, :]
-            r, s, c, n, t = s_ext.split(1, dim=-1)
+            r, s, c, n, t, _, _, _ = s_ext.split(1, dim=-1)
             a = torch.atan2(s, c) + self.env.direction[focus, time_step, 0]
             en = torch.cat([c, s], dim=-1)
             et = torch.cat([-s, c], dim=-1)

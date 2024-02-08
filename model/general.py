@@ -38,7 +38,7 @@ class Attention(nn.Module):
         weight = torch.softmax(log_weight_, dim=-2)  # N, 20, 1
         # 若 mask 中全是 False (即一个东西也没有) , 则 softmax 将得到一组 nan, 这里将 nan 全部设置为 0.
         weight_ = weight.masked_fill(~mask, 0)  # N, 20, 1
-        s_ = torch.einsum('nof,no->nf', s, weight_.squeeze(-1))
+        s_ = torch.einsum('nof,no->nf', s, weight_.squeeze(-1)) # N, 128
         return s_
 
     def get_weight(self, s):

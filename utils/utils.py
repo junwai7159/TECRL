@@ -7,11 +7,11 @@ import os
 import sys
 
 ########## STATE ##########
-def pack_state(s_self, s_int, s_ext):  # (N, 1) & (N, 5) & (N, 20, 5) -> (N, 106)
+def pack_state(s_self, s_int, s_ext):  # (N, 1) & (N, 8) & (N, 20, 8) -> (N, 169)
     s = torch.cat([s_self, s_int, s_ext.view(s_ext.shape[0], -1)], dim=-1)
     return s
 
-def unpack_state(s):  # (N, 106) -> (N, 1) & (N, 5) & (N, 20, 5)
+def unpack_state(s):  # (N, 169) -> (N, 1) & (N, 8) & (N, 20, 8)
     s_self, s_int, s_ext = s.split((1, 8, s.shape[1] - 1 - 8), dim=-1)
     s_ext = s_ext.view(s_ext.shape[0], -1, 8)
     return s_self, s_int, s_ext
@@ -19,31 +19,137 @@ def unpack_state(s):  # (N, 106) -> (N, 1) & (N, 5) & (N, 20, 5)
 
 ########## ENVS ##########
 # 定义行人、障碍物、地图
-scenario_list = ['RANDOM', 'CIRCLE', 'CORRIDOR', 'CROSSING']
+scenario_list = ['CIRCLE', 'CORRIDOR', 'CROSSING', 'RANDOM']
 
-def init_ped_circle(r, n1):
+def init_ped_circle(n1, r, noise=None):
     angles = np.linspace(0, 2*np.pi, n1, endpoint=False)
+    noise = noise if noise else 0
     positions = [[round(r*np.cos(theta), 4), round(r*np.sin(theta), 4)] for theta in angles]
-    destinations = [[round(r*np.cos(theta) + np.pi, 4), round(r*np.sin(theta) + np.pi, 4)] for theta in angles]
-    return torch.tensor(positions), torch.tensor(destinations)
+    destinations = [[-pos[0], -pos[1]] for pos in positions]
+    return torch.tensor(positions, dtype=torch.float32), torch.tensor(destinations, dtype=torch.float32)
+
+def init_ped_corridor(env, n1, size, vertical, horizontal):
+    positions, destinations = list(), list()
+    rng = np.random.RandomState()
+    r2 = env.ped_radius ** 2
+    i, placeable = 0, None
+
+    if vertical and horizontal: 
+        vertical = rng.random() > 0.5
+    else: 
+        vertical = vertical
+    
+    # Positions
+    while len(positions) < n1:
+        if vertical:
+            x = rng.rand() - 0.5
+            if horizontal: x *= 0.5
+            y = (rng.random() - 0.5) * 0.5
+            if y < 0: 
+                y -= 0.25
+            else: 
+                y += 0.25
+        else:
+            x = (rng.random() - 0.5) * 0.5
+            if x < 0:
+                x -= 0.25
+            else:
+                x += 0.25
+            y = rng.random() - 0.5
+            if vertical: y *= 0.5
+        
+        ped_pos0 = [round(x*size*2, 4), round(y*size*2, 4)]
+        for ped_pos1 in positions:
+            dist2 = (ped_pos0[0] - ped_pos1[0])**2 + (ped_pos0[1] - ped_pos1[1])**2
+            if dist2 <= (env.ped_radius * 2)**2: # Collision
+                placeable = False
+            placeable = True
+        if placeable or not positions:
+            positions.append(ped_pos0)
+    
+    # Destinations
+    while len(destinations) < n1:
+        if vertical:
+            x = rng.random() - 0.5
+            if horizontal: x *= 0.5
+            y = (rng.random() - 0.5) * 0.5 
+            if y < 0:
+                y -= 0.25
+            else:
+                y += 0.25
+            if ((positions[i][1] > 0 and y > 0) or (positions[i][1] < 0 and y < 0)):
+                y = -y
+        else:
+            x = (rng.random() - 0.5) * 0.5
+            if x < 0:
+                x -= 0.25
+            else:
+                x += 0.25
+            if (positions[i][0] > 0 and x > 0) or (positions[i][0] < 0 and x < 0):
+                x = -x
+            y = rng.random()-0.5
+            if vertical: y *= 0.5
+        x *= size
+        y *= size
+        if (positions[i][0]-x)**2 + (positions[i][1]-y)**2 <= r2:
+            continue
+        placeable = True
+        for gx, gy in destinations:
+            if (gx-x)**2 + (gy-y)**2 <= r2:
+                placeable = False
+        if placeable:
+            destinations.append([x, y])
+            i+=1
+
+    return torch.tensor(positions, dtype=torch.float32), torch.tensor(destinations, dtype=torch.float32)
+
+def init_ped_crossing(n1):
+    pass
 
 def init_env(env, ARGS):
     n1, n2, size = ARGS.NUM_PED, ARGS.NUM_OBS, ARGS.SIZE_ENV
-
+    """TO-DO"""
     # Pedestrians
     velocity = 0.0 * torch.rand((n1, 2))
-    if ARGS.SCENARIO == 'RANDOM':
+    if ARGS.SCENARIO == 'CIRCLE':
+        positions, destinations = init_ped_circle(n1, ARGS.SIZE_ENV)
+    elif ARGS.SCENARIO == 'CORRIDOR':
+        positions, destinations = init_ped_corridor(env, n1, ARGS.SIZE_ENV, False, True)
+    elif ARGS.SCENARIO == 'CROSSING':
+        pass
+    elif ARGS.SCENARIO == 'RANDOM':
         positions = torch.distributions.Uniform(-size, size).sample([n1, 2])
         destinations = torch.distributions.Uniform(-size, size).sample([n1, 2])
-    elif ARGS.SCENARIO == 'CIRCLE':
-        positions, destinations = init_ped_circle(, n1)
-
     env.add_pedestrian(positions, velocity, destinations, init=True)
-
+    
+    """TO-DO"""
     # Obstacles
     n2 = torch.distributions.Poisson(-n2).sample().to(int).item() if n2 < 0 else n2
     if n2 > 0:
-        obstacles = torch.distributions.Uniform(-1.5 * size, 1.5 * size).sample([n2, 2])
+        if ARGS.SCENARIO == 'CIRCLE' or ARGS.SCENARIO == 'RANDOM':
+            obstacles = torch.distributions.Uniform(-1.5 * size, 1.5 * size).sample([n2, 2])
+        elif ARGS.SCENARIO == 'CORRIDOR':
+            vertical, horizontal = False, True
+
+            if horizontal:
+                start_top, end_top = np.array([-ARGS.SIZE_ENV, ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV, ARGS.SIZE_ENV])
+                start_bottom, end_bottom = np.array([-ARGS.SIZE_ENV, -ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV, -ARGS.SIZE_ENV])
+                n_top = int(np.linalg.norm(end_top-start_top) / (env.obstacle_radius*2))
+                n_bottom = int(np.linalg.norm(end_bottom-start_bottom) / (env.obstacle_radius*2))
+                obstacles_top = np.linspace(start_top, end_top, n_top)
+                obstacles_bottom = np.linspace(start_bottom, end_bottom, n_bottom)
+                obstacles = torch.tensor(np.concatenate((obstacles_top, obstacles_bottom)), dtype=torch.float32)
+            else:
+                start_top, end_top = np.array([-ARGS.SIZE_ENV, ARGS.SIZE_ENV]), np.array([-ARGS.SIZE_ENV, -ARGS.SIZE_ENV])
+                start_bottom, end_bottom = np.array([ARGS.SIZE_ENV, ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV, -ARGS.SIZE_ENV])
+                n_top = int(np.linalg.norm(end_top-start_top) / (env.obstacle_radius*2))
+                n_bottom = int(np.linalg.norm(end_bottom-start_bottom) / (env.obstacle_radius*2))
+                obstacles_top = np.linspace(start_top, end_top, n_top)
+                obstacles_bottom = np.linspace(start_bottom, end_bottom, n_bottom)
+                obstacles = torch.tensor(np.concatenate((obstacles_top, obstacles_bottom)), dtype=torch.float32)
+            
+        elif ARGS.SCENARIO == 'CROSSING':
+            pass
         env.add_obstacle(obstacles, init=True)
 
 
@@ -57,6 +163,7 @@ def get_args(**kwargs):
     parser.add_argument("--LOAD_MODEL", type=str, default=None, help='pretrained model to load')
     parser.add_argument("--SEED", type=int, default=42, help='random seed')
     parser.add_argument("--DEVICE", type=str, default="cpu", help='cpu or cuda')
+    parser.add_argument("--MODEL", type=str, default="RL", help="SFM or ORCA or RL")
 
     # parameters in environments
     parser.add_argument("--NO_COLLISION_DETECTION", action="store_true", help='disable the collision detection mechanism')
@@ -140,7 +247,7 @@ def xy2rscnt(pos, vel, dir=0):
     get observation states
     :param pos: [N, 2]
     :param vel: [N, 2]
-    :return rscnt: [N, 5]
+    :return rscnt: [N, 8]
         r: distance
         s: sin(orientation), left(+) right(-)
         c: cos(orientation), front(+) back(-)
@@ -171,6 +278,7 @@ def mod2pi(delta_angle):
     """
     return torch.remainder(delta_angle + np.pi, 2 * np.pi) - np.pi
 
+# 看不懂
 def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
     """
     calculate the TTC and MD between N*N pairs of pedestrians at T steps, return the MD, TTC, and MASK

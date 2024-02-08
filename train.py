@@ -42,8 +42,7 @@ if __name__ == '__main__':
         open(os.path.join(save_path, f'rewards.log'), 'a').write(f'{str(reward)} {" ".join([str(r) for r in detail.values()])}\n')
         
         # save (at epoch 100, 200, ..., 900, 1000, 2000, ..., 9000, ...)
-        if episode > 0:
-        #if episode >= 100 and str(episode)[1:] == '0' * len(str(episode)[1:]):
+        if episode >= 100 and str(episode)[1:] == '0' * len(str(episode)[1:]):
             # save model
             torch.save(model.state_dict(), os.path.join(save_path, f'model_{episode}.bin'))
             # save GIF visualization
