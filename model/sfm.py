@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import pysocialforce as psf
 from pathlib import Path
 
@@ -7,23 +8,51 @@ class SFM(torch.nn.Module):
     super(SFM, self).__init__()
     self.env = env
     self.ARGS = ARGS
+    self.N = self.env.num_pedestrians
+    self.M = self.env.num_obstacles
     self.initial_state = self.init_state()  # (N, 6)
+    self.obstacle = self.init_obstacle()  # (M * 4, 4)
     self.simulator = self.init_simulator()
 
   def init_state(self):
-    N = self.env.position.shape[0]
     # (px, py, vx, vy, gx, gy)
-    initial_state = torch.zeros((N, 6))
+    initial_state = torch.zeros((self.N, 6))
     initial_state[:, 0:2] = self.env.position[:, -1, :]
-    initial_state[:, 2:4] = torch.ones((N, 2))
     initial_state[:, 4:6] = self.env.destination
+
+    for agent_id in range(self.N):
+      p = self.env.position[agent_id, -1, :]
+      g = self.env.destination[agent_id, :]
+      initial_state[agent_id, 2:4] = (g - p) / torch.norm(g - p)
 
     return initial_state
   
+  def init_obstacle(self):
+    # (startx, endx, starty, endy)
+    obstacle = []
+    half_side = self.env.obstacle_radius * np.sqrt(2) / 2
+
+    for obs_id in range(self.M):
+      x, y = self.env.obstacle[obs_id].tolist()
+
+      top_left_vertex = (x - half_side, y + half_side)
+      top_right_vertex = (x + half_side, y + half_side)
+      bottom_left_vertex = (x - half_side, y - half_side)
+      bottom_right_vertex = (x + half_side, y - half_side)
+
+      top_side = [coord for pair in zip(top_left_vertex, top_right_vertex) for coord in pair]
+      bottom_side = [coord for pair in zip(bottom_left_vertex, bottom_right_vertex) for coord in pair]
+      left_side = [coord for pair in zip(top_left_vertex, bottom_left_vertex) for coord in pair]
+      right_side = [coord for pair in zip(top_right_vertex, bottom_right_vertex) for coord in pair]
+
+      obstacle.extend([top_side, bottom_side, left_side, right_side])
+
+    return obstacle
+
   def init_simulator(self):
     simulator = psf.Simulator(self.initial_state,
                               groups=None,
-                              obstacles=None,
+                              obstacles=self.obstacle,
                               config_file=Path(__file__).resolve().parent.joinpath("sfm.toml"))
     
     return simulator

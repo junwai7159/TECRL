@@ -6,7 +6,7 @@ from pyqtgraph.dockarea.Dock import Dock
 from pyqtgraph.dockarea.DockArea import DockArea
 from pyqtgraph.parametertree import ParameterTree, Parameter, parameterTypes
 from pyqtgraph import mkPen, mkColor
-from utils.utils import rotate
+from utils.utils import rotate, init_env, get_args
 
 class Visualization:
     win_title = 'RL4Pedsim'
@@ -333,16 +333,23 @@ class Visualization:
 
 
     def _reset(self):
-        from utils.utils import init_env, get_args
         ARGS = get_args()
         init_env(self.env, ARGS)
         self.ctrl_widget['time_step'].setLimits([0, self.env.num_steps])
         self.ctrl_widget['time_step'].setValue(0)
 
+        if ARGS.MODEL == 'SFM' or 'ORCA':
+            self.model.__init__(self.env, ARGS)
+
     def _restart(self):
+        ARGS = get_args()
+
         self.env.add_pedestrian(self.env.position[:, 0, :], self.env.velocity[:, 0, :], self.env.destination, init=True)
         self.ctrl_widget['time_step'].setLimits([0, self.env.num_steps])
         self.ctrl_widget['time_step'].setValue(0)
+
+        if ARGS.MODEL == 'SFM' or 'ORCA':
+            self.model.__init__(self.env, ARGS)
 
     def _action_backward(self):
         time_step = self.ctrl_widget['time_step'].value()

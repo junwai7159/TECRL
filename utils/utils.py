@@ -21,26 +21,21 @@ def unpack_state(s):  # (N, 169) -> (N, 1) & (N, 8) & (N, 20, 8)
 # 定义行人、障碍物、地图
 scenario_list = ['CIRCLE', 'CORRIDOR', 'CROSSING', 'RANDOM']
 
-def init_ped_circle(n1, r, noise=None):
-    angles = np.linspace(0, 2*np.pi, n1, endpoint=False)
-    noise = noise if noise else 0
-    positions = [[round(r*np.cos(theta), 4), round(r*np.sin(theta), 4)] for theta in angles]
+def init_ped_circle(ARGS):
+    angles = np.linspace(0, 2*np.pi, ARGS.NUM_PED, endpoint=False)
+    positions = [[round(ARGS.SIZE_ENV * np.cos(theta), 4), round(ARGS.SIZE_ENV * np.sin(theta), 4)] for theta in angles]
     destinations = [[-pos[0], -pos[1]] for pos in positions]
     return torch.tensor(positions, dtype=torch.float32), torch.tensor(destinations, dtype=torch.float32)
 
-def init_ped_corridor(env, n1, size, vertical, horizontal):
+def init_ped_corridor(env, ARGS, vertical=None, horizontal=None):
     positions, destinations = list(), list()
     rng = np.random.RandomState()
     r2 = env.ped_radius ** 2
     i, placeable = 0, None
-
-    if vertical and horizontal: 
-        vertical = rng.random() > 0.5
-    else: 
-        vertical = vertical
+    len_ratio = 3
     
     # Positions
-    while len(positions) < n1:
+    while len(positions) < ARGS.NUM_PED:
         if vertical:
             x = rng.rand() - 0.5
             if horizontal: x *= 0.5
@@ -49,7 +44,7 @@ def init_ped_corridor(env, n1, size, vertical, horizontal):
                 y -= 0.25
             else: 
                 y += 0.25
-        else:
+        elif horizontal:
             x = (rng.random() - 0.5) * 0.5
             if x < 0:
                 x -= 0.25
@@ -58,7 +53,11 @@ def init_ped_corridor(env, n1, size, vertical, horizontal):
             y = rng.random() - 0.5
             if vertical: y *= 0.5
         
-        ped_pos0 = [round(x*size*2, 4), round(y*size*2, 4)]
+        if vertical:
+            ped_pos0 = [round(x * ARGS.SIZE_ENV * 1.5, 4), round(y * ARGS.SIZE_ENV * 2 * len_ratio, 4)]
+        elif horizontal:
+            ped_pos0 = [round(x * ARGS.SIZE_ENV * 2 * len_ratio, 4), round(y * ARGS.SIZE_ENV * 1.5, 4)]
+
         for ped_pos1 in positions:
             dist2 = (ped_pos0[0] - ped_pos1[0])**2 + (ped_pos0[1] - ped_pos1[1])**2
             if dist2 <= (env.ped_radius * 2)**2: # Collision
@@ -68,7 +67,99 @@ def init_ped_corridor(env, n1, size, vertical, horizontal):
             positions.append(ped_pos0)
     
     # Destinations
-    while len(destinations) < n1:
+    while len(destinations) < ARGS.NUM_PED:
+        if vertical:
+            x = rng.random() - 0.5
+            if horizontal: x *= 0.5
+            y = (rng.random() - 0.5) * 0.5 
+            if y < 0:
+                y -= 0.25
+            else:
+                y += 0.25
+            if ((positions[i][1] > 0 and y > 0) or (positions[i][1] < 0 and y < 0)):
+                y = -y
+        elif horizontal:
+            x = (rng.random() - 0.5) * 0.5
+            if x < 0:
+                x -= 0.25
+            else:
+                x += 0.25
+            if (positions[i][0] > 0 and x > 0) or (positions[i][0] < 0 and x < 0):
+                x = -x
+            y = rng.random()-0.5
+            if vertical: y *= 0.5
+        
+        if vertical:
+            x *= ARGS.SIZE_ENV 
+            y *= ARGS.SIZE_ENV * 2 * len_ratio       
+        elif horizontal: 
+            x *= ARGS.SIZE_ENV * 2 * len_ratio
+            y *= ARGS.SIZE_ENV
+
+        if (positions[i][0] - x)**2 + (positions[i][1] - y)**2 <= r2:
+            continue
+        placeable = True
+        for gx, gy in destinations:
+            if (gx-x)**2 + (gy-y)**2 <= r2:
+                placeable = False
+        if placeable:
+            destinations.append([x, y])
+            i+=1
+
+    return torch.tensor(positions, dtype=torch.float32), torch.tensor(destinations, dtype=torch.float32)
+
+def init_ped_crossing(env, ARGS):
+    positions, destinations = list(), list()
+    rng = np.random.RandomState()
+    r2 = env.ped_radius ** 2
+    i, placeable = 0, None
+    len_ratio = 3
+    vertical, horizontal = None, None
+    
+    # Positions
+    while len(positions) < ARGS.NUM_PED:
+        if rng.random() > 0.5:
+            vertical, horizontal = True, False
+        else:
+            vertical, horizontal = False, True
+
+        if vertical:
+            x = rng.rand() - 0.5
+            if horizontal: x *= 0.5
+            y = (rng.random() - 0.5) * 0.5
+            if y < 0: 
+                y -= 0.25
+            else: 
+                y += 0.25
+        elif horizontal:
+            x = (rng.random() - 0.5) * 0.5
+            if x < 0:
+                x -= 0.25
+            else:
+                x += 0.25
+            y = rng.random() - 0.5
+            if vertical: y *= 0.5
+        
+        if vertical:
+            ped_pos0 = [round(x * ARGS.SIZE_ENV * 1.5, 4), round(y * ARGS.SIZE_ENV * 2 * len_ratio, 4)]
+        elif horizontal:
+            ped_pos0 = [round(x * ARGS.SIZE_ENV * 2 * len_ratio, 4), round(y * ARGS.SIZE_ENV * 1.5, 4)]
+
+        for ped_pos1 in positions:
+            dist2 = (ped_pos0[0] - ped_pos1[0])**2 + (ped_pos0[1] - ped_pos1[1])**2
+            if dist2 <= (env.ped_radius * 2)**2: # Collision
+                placeable = False
+            placeable = True
+        if placeable or not positions:
+            positions.append(ped_pos0)
+    
+    # Destinations
+    while len(destinations) < ARGS.NUM_PED:
+        if rng.random() > 0.5:
+            vertical, horizontal = True, False
+        else:
+            vertical, horizontal = False, True
+    
         if vertical:
             x = rng.random() - 0.5
             if horizontal: x *= 0.5
@@ -89,9 +180,15 @@ def init_ped_corridor(env, n1, size, vertical, horizontal):
                 x = -x
             y = rng.random()-0.5
             if vertical: y *= 0.5
-        x *= size
-        y *= size
-        if (positions[i][0]-x)**2 + (positions[i][1]-y)**2 <= r2:
+
+        if vertical:
+            x *= ARGS.SIZE_ENV 
+            y *= ARGS.SIZE_ENV * 2 * len_ratio       
+        elif horizontal: 
+            x *= ARGS.SIZE_ENV * 2 * len_ratio
+            y *= ARGS.SIZE_ENV
+
+        if (positions[i][0] - x)**2 + (positions[i][1] - y)**2 <= r2:
             continue
         placeable = True
         for gx, gy in destinations:
@@ -103,53 +200,66 @@ def init_ped_corridor(env, n1, size, vertical, horizontal):
 
     return torch.tensor(positions, dtype=torch.float32), torch.tensor(destinations, dtype=torch.float32)
 
-def init_ped_crossing(n1):
-    pass
-
 def init_env(env, ARGS):
     n1, n2, size = ARGS.NUM_PED, ARGS.NUM_OBS, ARGS.SIZE_ENV
-    """TO-DO"""
-    # Pedestrians
+    ########## Pedestrians ##########
     velocity = 0.0 * torch.rand((n1, 2))
     if ARGS.SCENARIO == 'CIRCLE':
-        positions, destinations = init_ped_circle(n1, ARGS.SIZE_ENV)
+        positions, destinations = init_ped_circle(ARGS)
     elif ARGS.SCENARIO == 'CORRIDOR':
-        positions, destinations = init_ped_corridor(env, n1, ARGS.SIZE_ENV, False, True)
+        positions, destinations = init_ped_corridor(env, ARGS, vertical=True, horizontal=False)
     elif ARGS.SCENARIO == 'CROSSING':
-        pass
-    elif ARGS.SCENARIO == 'RANDOM':
+        positions, destinations = init_ped_crossing(env, ARGS)
+    elif ARGS.SCENARIO == 'RANDOM' or 'CROSSING':
         positions = torch.distributions.Uniform(-size, size).sample([n1, 2])
         destinations = torch.distributions.Uniform(-size, size).sample([n1, 2])
+
     env.add_pedestrian(positions, velocity, destinations, init=True)
     
-    """TO-DO"""
-    # Obstacles
+    ########## Obstacles ##########
     n2 = torch.distributions.Poisson(-n2).sample().to(int).item() if n2 < 0 else n2
+    len_ratio = 3
+
     if n2 > 0:
         if ARGS.SCENARIO == 'CIRCLE' or ARGS.SCENARIO == 'RANDOM':
             obstacles = torch.distributions.Uniform(-1.5 * size, 1.5 * size).sample([n2, 2])
-        elif ARGS.SCENARIO == 'CORRIDOR':
-            vertical, horizontal = False, True
-
-            if horizontal:
-                start_top, end_top = np.array([-ARGS.SIZE_ENV, ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV, ARGS.SIZE_ENV])
-                start_bottom, end_bottom = np.array([-ARGS.SIZE_ENV, -ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV, -ARGS.SIZE_ENV])
-                n_top = int(np.linalg.norm(end_top-start_top) / (env.obstacle_radius*2))
-                n_bottom = int(np.linalg.norm(end_bottom-start_bottom) / (env.obstacle_radius*2))
-                obstacles_top = np.linspace(start_top, end_top, n_top)
-                obstacles_bottom = np.linspace(start_bottom, end_bottom, n_bottom)
-                obstacles = torch.tensor(np.concatenate((obstacles_top, obstacles_bottom)), dtype=torch.float32)
-            else:
-                start_top, end_top = np.array([-ARGS.SIZE_ENV, ARGS.SIZE_ENV]), np.array([-ARGS.SIZE_ENV, -ARGS.SIZE_ENV])
-                start_bottom, end_bottom = np.array([ARGS.SIZE_ENV, ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV, -ARGS.SIZE_ENV])
-                n_top = int(np.linalg.norm(end_top-start_top) / (env.obstacle_radius*2))
-                n_bottom = int(np.linalg.norm(end_bottom-start_bottom) / (env.obstacle_radius*2))
-                obstacles_top = np.linspace(start_top, end_top, n_top)
-                obstacles_bottom = np.linspace(start_bottom, end_bottom, n_bottom)
-                obstacles = torch.tensor(np.concatenate((obstacles_top, obstacles_bottom)), dtype=torch.float32)
             
+        elif ARGS.SCENARIO == 'CORRIDOR':
+            vertical, horizontal = True, False
+            if horizontal:
+                start_top, end_top = np.array([-ARGS.SIZE_ENV * len_ratio, ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV * len_ratio, ARGS.SIZE_ENV])
+                start_bottom, end_bottom = np.array([-ARGS.SIZE_ENV * len_ratio, -ARGS.SIZE_ENV]), np.array([ARGS.SIZE_ENV * len_ratio, -ARGS.SIZE_ENV])
+                n_top = int(np.linalg.norm(end_top - start_top) / (env.obstacle_radius * 2))
+                n_bottom = int(np.linalg.norm(end_bottom - start_bottom) / (env.obstacle_radius * 2))
+                obstacles_top = np.linspace(start_top, end_top, n_top)
+                obstacles_bottom = np.linspace(start_bottom, end_bottom, n_bottom)
+                obstacles = torch.tensor(np.concatenate((obstacles_top, obstacles_bottom)), dtype=torch.float32)
+            elif vertical:
+                start_top, end_top = np.array([-ARGS.SIZE_ENV, ARGS.SIZE_ENV * len_ratio]), np.array([-ARGS.SIZE_ENV, -ARGS.SIZE_ENV * len_ratio])
+                start_bottom, end_bottom = np.array([ARGS.SIZE_ENV, ARGS.SIZE_ENV * len_ratio]), np.array([ARGS.SIZE_ENV, -ARGS.SIZE_ENV * len_ratio])
+                n_top = int(np.linalg.norm(end_top-start_top) / (env.obstacle_radius * 2))
+                n_bottom = int(np.linalg.norm(end_bottom-start_bottom) / (env.obstacle_radius * 2))
+                obstacles_top = np.linspace(start_top, end_top, n_top)
+                obstacles_bottom = np.linspace(start_bottom, end_bottom, n_bottom)
+                obstacles = torch.tensor(np.concatenate((obstacles_top, obstacles_bottom)), dtype=torch.float32)
+
         elif ARGS.SCENARIO == 'CROSSING':
-            pass
+            quadrant1 = np.array([[ARGS.SIZE_ENV, ARGS.SIZE_ENV * len_ratio], [ARGS.SIZE_ENV , ARGS.SIZE_ENV], [ARGS.SIZE_ENV * len_ratio, ARGS.SIZE_ENV]])
+            quadrant2 = np.array([[-ARGS.SIZE_ENV, ARGS.SIZE_ENV * len_ratio], [-ARGS.SIZE_ENV, ARGS.SIZE_ENV], [-ARGS.SIZE_ENV * len_ratio, ARGS.SIZE_ENV]])
+            quadrant3 = np.array([[-ARGS.SIZE_ENV, -ARGS.SIZE_ENV * len_ratio], [-ARGS.SIZE_ENV, -ARGS.SIZE_ENV], [-ARGS.SIZE_ENV * len_ratio, -ARGS.SIZE_ENV]])
+            quadrant4 = np.array([[ARGS.SIZE_ENV, -ARGS.SIZE_ENV * len_ratio], [ARGS.SIZE_ENV, -ARGS.SIZE_ENV], [ARGS.SIZE_ENV * len_ratio, -ARGS.SIZE_ENV]])
+
+            def init_quad_crossing(quadrant):
+                for vertex in quadrant:
+                    n_line1 = int(np.linalg.norm(quadrant[0] - quadrant[1]) / (env.obstacle_radius * 2))
+                    n_line2 = int(np.linalg.norm(quadrant[1] - quadrant[2]) / (env.obstacle_radius * 2)) - 1
+                    obstacles_line1 = np.linspace(quadrant[0], quadrant[1], n_line1)
+                    obstacles_line2 = np.linspace(quadrant[1], quadrant[2], n_line2)[1:]
+                    obstacles = torch.tensor(np.concatenate((obstacles_line1, obstacles_line2)), dtype=torch.float32)
+                return obstacles
+            
+            obstacles = torch.cat((init_quad_crossing(quadrant1), init_quad_crossing(quadrant2), init_quad_crossing(quadrant3), init_quad_crossing(quadrant4)))
+            
         env.add_obstacle(obstacles, init=True)
 
 
@@ -163,7 +273,7 @@ def get_args(**kwargs):
     parser.add_argument("--LOAD_MODEL", type=str, default=None, help='pretrained model to load')
     parser.add_argument("--SEED", type=int, default=42, help='random seed')
     parser.add_argument("--DEVICE", type=str, default="cpu", help='cpu or cuda')
-    parser.add_argument("--MODEL", type=str, default="RL", help="SFM or ORCA or RL")
+    parser.add_argument("--MODEL", type=str, default="TECRL", help="SFM or ORCA or TECRL")
 
     # parameters in environments
     parser.add_argument("--NO_COLLISION_DETECTION", action="store_true", help='disable the collision detection mechanism')
