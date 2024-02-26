@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-import pysocialforce as psf
+from model import pysocialforce as psf
 from pathlib import Path
 
 class SFM(torch.nn.Module):

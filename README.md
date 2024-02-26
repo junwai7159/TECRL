@@ -10,3 +10,13 @@ tensorboard --logdir <LOG_DIR>
 Plot results of ppo
 https://medium.com/aureliantactics/understanding-ppo-plots-in-tensorboard-cbc3199b9ba2
 https://zhuanlan.zhihu.com/p/679975961
+
+save env:
+conda env export > environment.yml
+conda list --explicit > spec-file.txt
+pip freeze > requirements.txt
+
+create env:
+conda create --name ENV --file spec-file.txt
+conda update--name ENV --file environment.yml
+pip install -r requirements.txt

@@ -3,7 +3,7 @@ from typing import List
 
 import numpy as np
 
-from pysocialforce.utils import stateutils
+from model.pysocialforce.utils import stateutils
 
 
 class PedState:

@@ -34,8 +34,8 @@ if __name__ == '__main__':
         # generate environment
         env = Pedsim(ARGS)
         init_env(env, ARGS)
-        if episode == 1:
-            model.writer.add_graph(model, torch.randn(env.num_pedestrians, 169))
+        # if episode == 1:
+        #     model.writer.add_graph(model, torch.randn(env.num_pedestrians, 169))
 
         # run & train
         total_reward, arrive_num, total_detail_reward  = model.run_episode(env, episode, train=True)

@@ -38,8 +38,11 @@ if __name__ == '__main__':
     exit_time = torch.masked_select(time, exit_env)  # (N,)
     exit_time[exit_time == 0] = T
 
-    velocity = position.diff(dim=1, prepend=position[:, (0,), :]) / meta_data['time_unit']  # (N, T, 2)
-    velocity[:, into_time, :] = velocity.roll(shifts=-1, dims=1)[:, into_time, :]
+    velocity = np.diff(position, axis=1, prepend=position[:, (0,), :]) / meta_data['time_unit']
+    velocity[:, into_time, :] = np.roll(velocity, shift=-1, axis=1)[:, into_time, :]
+    velocity = torch.tensor(velocity)
+    # velocity = position.diff(dim=1, prepend=position[:, (0,), :]) / meta_data['time_unit']  # (N, T, 2)
+    # velocity[:, into_time, :] = velocity.roll(shifts=-1, dims=1)[:, into_time, :]
     one_step_flag = (into_time + 1 == exit_time)
     velocity[one_step_flag, into_time[one_step_flag], :] = 0.
 
@@ -50,11 +53,27 @@ if __name__ == '__main__':
 
     
     # Plot dataset
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
+    # import matplotlib.pyplot as plt
+    # import matplotlib.animation as animation
     
-    plt.figure()
-    for i in range(N):
-        plt.plot(position[i, :, 0], position[i, :, 1])
+    # plt.figure()
+    # for i in range(N):
+    #     plt.plot(position[i, :, 0], position[i, :, 1])
 
+    # plt.show()
+
+    # KDE
+    from matplotlib import pyplot as plt
+    from sklearn.neighbors import KernelDensity
+
+    v = velocity.reshape(-1, 2)
+    mask = ~torch.any(torch.isnan(v), dim=1)
+    v = v[mask]
+    speed = torch.norm(v, dim=1).unsqueeze(dim=1)
+    X_plot = np.linspace(-3, 3, 1000)[:, np.newaxis]
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.2).fit(speed)
+    log_dens = kde.score_samples(X_plot)
+
+    plt.figure()
+    plt.fill(X_plot[:, 0], np.exp(log_dens))
     plt.show()

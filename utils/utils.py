@@ -375,7 +375,7 @@ def xy2rscnt(pos, vel, dir=0):
     y = r * s
     _r = 1. / (r + 1e-8)
     n = (pos * vel).sum(dim=-1, keepdim=True) * _r
-    t = (pos.flip(-1) * vel).diff(dim=-1) * _r
+    t = torch.diff((pos.flip(-1) * vel), dim=-1) * _r
     rscnt = torch.cat([r, s, c, n, t, a, x, y], dim=-1)
     return rscnt
 

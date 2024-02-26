@@ -223,11 +223,16 @@ class PPO(torch.nn.Module):
 
         # TensorBoard: track training
         self.writer.add_scalar('Environment/Cumulative Reward', total_reward, self.episode)
+        self.writer.add_scalar('Environment/Energy', total_detail_reward['ENERGY'], self.episode)
+        self.writer.add_scalar('Environment/Work', total_detail_reward['WORK'], self.episode)
+        self.writer.add_scalar('Environment/Mental', total_detail_reward['MENTAL'], self.episode)
         self.writer.add_scalar('Environment/Episode Length', step, self.episode)
+
         if pg_loss:
             self.writer.add_scalar('Losses/Policy Loss', pg_loss, self.episode)
         if vf_loss:
             self.writer.add_scalar('Losses/Value Loss', vf_loss, self.episode)
+
         if en_loss:
             self.writer.add_scalar('Policy/Entropy', en_loss, self.episode)
         self.writer.add_scalar('Policy/Learning Rate', self.optimizer.param_groups[0]['lr'], self.episode)

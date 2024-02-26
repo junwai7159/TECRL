@@ -78,7 +78,7 @@ class Pedsim:
         self.arrive_flag = arrive_flag_
         self.mask = mask_
         self.raw_velocity = velocity_
-        logging.debug(f"初始化场景完成, 当前场景中共 {self.num_pedestrians} 个行人, {self.num_steps} 时间步. ")
+        # logging.debug(f"初始化场景完成, 当前场景中共 {self.num_pedestrians} 个行人, {self.num_steps} 时间步. ")
 
     def load_ped(self, position):
         """
@@ -140,7 +140,7 @@ class Pedsim:
             self.arrive_flag = torch.cat([self.arrive_flag, arrive_flag_.to(self.device)], dim=0)
             self.num_pedestrians += n
 
-        logging.debug(f"添加了 {n} 个行人, 场景中共 {self.num_pedestrians} 个行人. ")
+        # logging.debug(f"添加了 {n} 个行人, 场景中共 {self.num_pedestrians} 个行人. ")
 
     def add_step(self, position, velocity, init=False):
         """
@@ -179,7 +179,7 @@ class Pedsim:
             self.raw_velocity = torch.cat([self.raw_velocity, velocity.view(N, 1, 2).to(self.device)], dim=1)
 
 
-        logging.debug(f"添加了 {1} 步, 场景中共 {self.num_steps} 个时间步. ")
+        # logging.debug(f"添加了 {1} 步, 场景中共 {self.num_steps} 个时间步. ")
 
     def remove_pedestrian(self, idx):
         """
@@ -223,7 +223,7 @@ class Pedsim:
         w = mod2pi(self.direction[:, index, 0] - self.direction[:, index - 1, 0]) / dt
         energy = mass * (2.23 + 1.26 * v ** 2 + 1. * (.5 * self.ped_radius ** 2) * w ** 2) * dt
         reward['ENERGY'] = {'SCALE': self.args.RW_ENERGY, 'VALUE': energy}
-        logging.debug(f"耗能: {energy}")
+        # logging.debug(f"耗能: {energy}")
 
         # Process Work
         delt_vel = self.raw_velocity[:, index, :] - self.velocity[:, index - 1, :]
@@ -232,7 +232,7 @@ class Pedsim:
         coll_work = .5 * mass * self.raw_velocity[:, index, :].square().sum(dim=-1)
         work += coll_work.masked_fill_(~coll_flag, 0.)
         reward['WORK'] = {'SCALE': self.args.RW_WORK, 'VALUE': work}
-        logging.debug(f"做功: {work}")
+        # logging.debug(f"做功: {work}")
         
         # Mental Effort
         vec2des = self.destination - self.position[:, index - 1, :]  # (N, 2)
@@ -271,7 +271,7 @@ class Pedsim:
         # coll = coll_ped.any(dim=-1) | coll_obs.any(dim=-1)
         # reward['COLL'] = {'SCALE': -0.01, 'VALUE': coll.float()}
 
-        logging.debug(f"最终 reward: {reward}")
+        # logging.debug(f"最终 reward: {reward}")
 
         rwd = torch.zeros([self.num_pedestrians, 1], device=self.device)
         for r in reward.values():
@@ -380,7 +380,7 @@ class Pedsim:
 
         self.num_steps += 1
 
-        logging.debug(f'添加了一步, 当前时间步为 {self.num_steps}')
+        # logging.debug(f'添加了一步, 当前时间步为 {self.num_steps}')
 
         return self.reward()
 

@@ -4,9 +4,9 @@
 
 See Helbing and Molnár 1998 and Moussaïd et al. 2010
 """
-from pysocialforce.utils import DefaultConfig
-from pysocialforce.scene import PedState, EnvState
-from pysocialforce import forces
+from model.pysocialforce.utils import DefaultConfig
+from model.pysocialforce.scene import PedState, EnvState
+from model.pysocialforce import forces
 
 
 class Simulator:
