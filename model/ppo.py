@@ -1,12 +1,16 @@
-import torch
-import torch.nn.functional as F
-from model.general import MLP, Attention
+import os
 import logging
-from torch.distributions import LogNormal, Categorical, Normal, MixtureSameFamily
-from torch.distributions import MultivariateNormal
-import torch.nn as nn
+
 from tqdm import tqdm
 import numpy as np
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
+from torch.distributions import LogNormal, Categorical, Normal, MixtureSameFamily, MultivariateNormal
+
+from model.general import MLP, Attention
 from utils.utils import pack_state, unpack_state, xy2ra, ra2xy, xy2rscnt
 
 class Actor(torch.nn.Module):
@@ -67,6 +71,17 @@ class PPO(torch.nn.Module):
         ], eps=1e-5)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=6400, gamma=0.9, verbose=False)
 
+        # TensorBoard
+        save_path = os.path.join(ARGS.SAVE_DIRECTORY, ARGS.UUID)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        self.writer = SummaryWriter(save_path)
+
+        # Episode
+        self.episode = 0
+        self.time_step = 0
+
+
     def generate_s(self, state):
         s_self, s_int, s_ext = unpack_state(state)                  # (N, 1) & (N, 8) & (N, 20, 8)
         s_int_ = torch.cat([s_self, s_int], dim=-1)                 # (N, 9)
@@ -118,6 +133,11 @@ class PPO(torch.nn.Module):
         ba = torch.stack(self.memory['a'], dim=1).view(-1, 2)
         bp = torch.stack(self.memory['p'], dim=1).view(-1, 1)
 
+        # For TensorBoard
+        pg_loss_array = np.array([])
+        vf_loss_array = np.array([])
+        en_loss_array = np.array([])
+
         for _ in tqdm(range(self.ARGS.K_EPOCH)):
             bs_ = self.generate_s(bs)
             entropy, new_logp = self.pi(bs_, ba)
@@ -126,9 +146,14 @@ class PPO(torch.nn.Module):
             ratio = torch.exp(new_logp - bp)
             surr1 = ratio * badv
             surr2 = torch.clamp(ratio, 1 - self.ARGS.EPSILON, 1 + self.ARGS.EPSILON) * badv
+
             pg_loss = torch.min(surr1, surr2).mean()
             vf_loss = F.mse_loss(bdr, value).mean()
             en_loss = entropy.mean()
+            pg_loss_array = np.concatenate([pg_loss_array, [pg_loss.item()]])
+            vf_loss_array = np.concatenate([vf_loss_array, [vf_loss.item()]])
+            en_loss_array = np.concatenate([en_loss_array, [en_loss.item()]])
+
             loss = -1.0 * pg_loss + 0.5 * vf_loss - self.ARGS.ENTROPY * en_loss
             assert not loss.isinf(), "Loss is Inf!"
             assert not loss.isnan(), "Loss is NaN!"
@@ -137,14 +162,24 @@ class PPO(torch.nn.Module):
             torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5, norm_type=2)
             self.optimizer.step()
             self.scheduler.step()
+        
+        return np.mean(pg_loss_array), np.mean(vf_loss_array), np.mean(en_loss_array)
+        
 
-    def run_episode(self, env, train=True):
+    def run_episode(self, env, episode, train=True):
         if env.obstacle is not None and env.obstacle.numel() > 0:
             assert not torch.any(torch.isnan(env.obstacle)), f"obstacle nan! {env.obstacle}"
         total_reward = 0.0
         total_detail_reward = {}
         done = False
+        
+        pg_loss, vf_loss, en_loss = None, None, None
+        total_value = 0.0
+
+        self.episode = episode
         for step in range(self.ARGS.MAX_EP_STEPS):
+            self.time_step += 1
+
             with torch.no_grad():
                 s_self, s_int, s_ext = env.get_state()
                 assert not torch.any(torch.isnan(s_int)), f"s_int nan! {s_int}"
@@ -154,8 +189,12 @@ class PPO(torch.nn.Module):
                 assert not torch.any(torch.isnan(action)), f"action nan! {action}"
                 value = self.v(s)
                 assert not torch.any(torch.isnan(value)), f"value nan! {value}"
+                total_value += torch.mean(value)
+
             reward, detail_rewards = env.action(action[:, 0], action[:, 1])
             assert not torch.any(torch.isnan(reward)), f"reward nan! {reward}"
+            # self.writer.add_scalar('Reward / Timestep', torch.mean(reward), self.time_step)
+
             total_reward += torch.mean(reward).item()
             for key, rwd in detail_rewards.items():
                 if key not in total_detail_reward:
@@ -174,12 +213,26 @@ class PPO(torch.nn.Module):
                 d = (step == self.ARGS.MAX_EP_STEPS - 1) or done
                 self.memory['d'].append(torch.full_like(reward, d))
                 if len(self.memory['s']) * env.num_pedestrians >= self.ARGS.MEMORY_CAPACITY:
-                    self.learn()
+                    pg_loss, vf_loss, en_loss = self.learn()
                     for k in self.memory.keys():
                         del self.memory[k][:]
             if done:
                 logging.debug('有人到达目的地, 提前结束')
                 break
+
+
+        # TensorBoard: track training
+        self.writer.add_scalar('Environment/Cumulative Reward', total_reward, self.episode)
+        self.writer.add_scalar('Environment/Episode Length', step, self.episode)
+        if pg_loss:
+            self.writer.add_scalar('Losses/Policy Loss', pg_loss, self.episode)
+        if vf_loss:
+            self.writer.add_scalar('Losses/Value Loss', vf_loss, self.episode)
+        if en_loss:
+            self.writer.add_scalar('Policy/Entropy', en_loss, self.episode)
+        self.writer.add_scalar('Policy/Learning Rate', self.optimizer.param_groups[0]['lr'], self.episode)
+        self.writer.add_scalar('Policy/Value Estimate', total_value, self.episode)
+
         return total_reward, int(torch.sum(env.arrive_flag[:, -1]).item()), total_detail_reward
 
     def visualize(self, smooth=True):

@@ -29,17 +29,20 @@ if __name__ == '__main__':
         f.write('REWARD ARRIVE ENERGY WORK COLL MENTAL\n')
     logging.getLogger().setLevel(logging.INFO)
 
+
     for episode in range(1, ARGS.MAX_EPISODES + 1):
         # generate environment
         env = Pedsim(ARGS)
         init_env(env, ARGS)
+        if episode == 1:
+            model.writer.add_graph(model, torch.randn(env.num_pedestrians, 169))
 
         # run & train
-        reward, arrive_num, detail = model.run_episode(env, train=True)
+        total_reward, arrive_num, total_detail_reward  = model.run_episode(env, episode, train=True)
         
         # log
-        logging.info(f'[Epi{episode}] #Arrive: {arrive_num}, Reward: {reward:7.2f} [ {", ".join([f"{detail[r]:.1f}({r})" for r in detail])} ]')
-        open(os.path.join(save_path, f'rewards.log'), 'a').write(f'{str(reward)} {" ".join([str(r) for r in detail.values()])}\n')
+        logging.info(f'[Epi{episode}] #Arrive: {arrive_num}, Reward: {total_reward:7.2f} [ {", ".join([f"{total_detail_reward[r]:.1f}({r})" for r in total_detail_reward])} ]')
+        open(os.path.join(save_path, f'rewards.log'), 'a').write(f'{str(total_reward)} {" ".join([str(r) for r in total_detail_reward.values()])}\n')
         
         # save (at epoch 100, 200, ..., 900, 1000, 2000, ..., 9000, ...)
         if episode >= 100 and str(episode)[1:] == '0' * len(str(episode)[1:]):
@@ -58,3 +61,5 @@ if __name__ == '__main__':
 
         if episode % 10000 == 0:
             model.ARGS.ENTROPY /= 10.0
+    
+    model.writer.close()
