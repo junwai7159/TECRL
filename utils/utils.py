@@ -388,7 +388,7 @@ def mod2pi(delta_angle):
     """
     return torch.remainder(delta_angle + np.pi, 2 * np.pi) - np.pi
 
-# 看不懂
+
 def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
     """
     calculate the TTC and MD between N*N pairs of pedestrians at T steps, return the MD, TTC, and MASK
@@ -398,6 +398,10 @@ def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
         - when i cannot see j at time t, (i, j, t) is invalid
         - when i and j are friends, (i, j, :) is invalid
     """
+    # MD: DCA (Distance of Closest Approach)
+    # TTC: TTCA (Time to Closest Approach)
+    # TTC_MAX: T_clip
+
     N, T = env.num_pedestrians, env.num_steps
     time_idx = torch.arange(T, device=env.device) # (t,)
     self_idx = torch.arange(N, device=env.device) # (n,)
@@ -415,8 +419,8 @@ def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
     d_now = xx.sqrt() - r2
     d_max = (vv * TTC_MAX**2 + 2 * xv * TTC_MAX + xx).clamp(1e-8).sqrt() - r2
     d_min = (xx - xv ** 2 / vv.clamp(1e-8)).clamp(1e-8).sqrt() - r2
-    t_min = -xv / vv.clamp(1e-8)
-    t_col = (-xv - (xv ** 2 - (xx - r2**2) * vv).sqrt()) / vv.clamp(1e-8)
+    t_min = -xv / vv.clamp(1e-8)    # ?
+    t_col = (-xv - (xv ** 2 - (xx - r2**2) * vv).sqrt()) / vv.clamp(1e-8)   # ?
     md = d_min.clamp(0).where(t_min <= TTC_MAX, d_max.clamp(0)).where(t_min >= 0, d_now.clamp(0.))
     ttc = t_min.clamp(0, TTC_MAX).where(t_col.isnan() | (t_min <= 0), t_col.clamp(0., TTC_MAX))
 

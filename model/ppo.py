@@ -17,7 +17,7 @@ class Actor(torch.nn.Module):
     def __init__(self, h_seq=(128, 128, 128, 128), gmm_num=3):
         super(Actor, self).__init__()
         self.gmm_num = gmm_num
-        self.seq = MLP((32 + 128, *h_seq, 6 * gmm_num), act=torch.nn.Tanh, act_out=torch.nn.Identity, gain_out=0.1)
+        self.seq = MLP((32 + 128, *h_seq, 6 * gmm_num), act=torch.nn.ReLU, act_out=torch.nn.Identity, gain_out=0.1)
 
     def forward(self, s, action=None, explore=True):
         N = s.shape[0]
@@ -46,7 +46,7 @@ class Actor(torch.nn.Module):
 class Critic(torch.nn.Module):
     def __init__(self, h_seq=(128, 128, 128, 128)):
         super(Critic, self).__init__()
-        self.seq = MLP((32 + 128, *h_seq, 1), act=torch.nn.Tanh, act_out=torch.nn.Identity, gain_out=0.1)
+        self.seq = MLP((32 + 128, *h_seq, 1), act=torch.nn.ReLU, act_out=torch.nn.Identity, gain_out=0.1)
 
     def forward(self, s):
         v = self.seq(s)
@@ -57,9 +57,9 @@ class PPO(torch.nn.Module):
     def __init__(self, ARGS):
         super(PPO, self).__init__()
         self.ARGS = ARGS
-        self.feature = MLP((8, *eval(ARGS.H_FEATURE), 128), act=nn.Tanh, act_out=nn.Identity)
-        self.attention = Attention((128, *eval(ARGS.H_ATTENTION), 1), act=nn.Tanh, act_out=nn.Identity)
-        self.feature2 = MLP((1 + 8, *eval(ARGS.H_FEATURE), 32), act=nn.Tanh, act_out=nn.Identity)
+        self.feature = MLP((8, *eval(ARGS.H_FEATURE), 128), act=nn.ReLU, act_out=nn.Identity)
+        self.attention = Attention((128, *eval(ARGS.H_ATTENTION), 1), act=nn.ReLU, act_out=nn.Identity)
+        self.feature2 = MLP((1 + 8, *eval(ARGS.H_FEATURE), 32), act=nn.ReLU, act_out=nn.Identity)
         self.pi = Actor(h_seq=eval(ARGS.H_SEQ))
         self.v = Critic(h_seq=eval(ARGS.H_SEQ))
         self.memory = dict(s=[], a=[], r=[], v=[], p=[], d=[], f=[])

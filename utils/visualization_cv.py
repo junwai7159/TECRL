@@ -55,7 +55,7 @@ def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None
     # 生成背景图
     fig = plt.figure(figsize=((xmax - xmin) / mpp / dpi, (ymax - ymin) / mpp / dpi), dpi=dpi)
     ax = fig.add_axes([0, 0, 1, 1])  # 生成占满 figure 的 ax
-    # ax.grid(linestyle='dotted')
+    ax.grid(linestyle='dotted')
     ax.set_aspect(1.0, 'datalim')
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
@@ -79,6 +79,7 @@ def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None
             continue
         im = deepcopy(background_image)
         # im = np.zeros((W, H, 3), dtype=np.uint8)
+
         for p in range(env.num_pedestrians):
             if env.mask[p, t]:
                 x = int((env.position[p, t, 0] - xmin) / mpp)
@@ -102,7 +103,7 @@ def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None
                 y = H - int((env.destination[p, 1] - ymin) / mpp)
                 cv2.drawMarker(im, position=(x, y), color=(120, 120, 240), markerSize=int(env.ped_radius / mpp), markerType=cv2.MARKER_TILTED_CROSS, thickness=1)
                     
-        # cv2.putText(im, f'Frame {t} / {t * env.meta_data["time_unit"]:.2f}s', (0+5, H-5), cv2.FONT_ITALIC, 1, (255, 0, 0), 1)
+        cv2.putText(im, f'Frame {t} / {t * env.meta_data["time_unit"]:.2f}s', (0+5, H-5), cv2.FONT_ITALIC, 1, (255, 0, 0), 1)
 
         if focus_id is not None:
             x = int((env.position[focus_id, t, 0] - xmin) / mpp)

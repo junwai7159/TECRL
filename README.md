@@ -20,3 +20,8 @@ create env:
 conda create --name ENV --file spec-file.txt
 conda update--name ENV --file environment.yml
 pip install -r requirements.txt
+
+metrics:
+tecrl 8.92, 7.77
+sfm 0.88, 28.9
+orca 1.93 11.2

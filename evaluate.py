@@ -1,11 +1,14 @@
 import torch
 import numpy as np
 from tqdm import tqdm
+
 from model.ppo import PPO
+from model.sfm import SFM
+from model.orca import ORCA
 from envs.pedsim import Pedsim
 from utils.utils import get_args, set_seed, pack_state, mod2pi
 from utils.metrics import calc_TEC, find_CAP
-
+from utils.visualization_cv import generate_gif
 
 if __name__ == '__main__':
     ARGS = get_args(
@@ -13,10 +16,6 @@ if __name__ == '__main__':
         # ENV=dict(type=str, default='dataset\UCY\UCY_Dataset_time162-216_timeunit0.08.npy'),
     )
     set_seed(ARGS.SEED)
-
-    # init model
-    model = PPO(ARGS).to(ARGS.DEVICE)
-    model.load_state_dict(torch.load(ARGS.LOAD_MODEL, map_location=torch.device(ARGS.DEVICE)))
 
     # load dataset
     meta_data, trajectoris, des, obs = np.load(ARGS.ENV, allow_pickle=True)
@@ -47,9 +46,15 @@ if __name__ == '__main__':
     obstacle = torch.FloatTensor(obs)   # (M, 2)
     env_real = Pedsim(ARGS)
     env_real.init_ped(position, velocity, destination)
-    
-    # evaluation
-    CAP_flag = find_CAP(env_real)
+    # generate_gif(env_real, f'GC.gif', xrange=(5, 25), yrange=(15, 35))
+
+    # init model
+    if ARGS.MODEL == 'TECRL':
+        model = PPO(ARGS).to(ARGS.DEVICE)
+        model.load_state_dict(torch.load(ARGS.LOAD_MODEL, map_location=torch.device(ARGS.DEVICE)))
+
+    # TECRL evaluation
+    CAP_flag = find_CAP(env_real)   # (N, N, T)
     CAP_start = CAP_flag.clone(); CAP_start[:, :, 1:] &= ~CAP_start[:, :, :-1]
     CAP_final = CAP_flag.clone(); CAP_final[:, :, :-1] &= ~CAP_final[:, :, 1:]
 
@@ -63,13 +68,28 @@ if __name__ == '__main__':
         env_imit = Pedsim(env_real.args)
         env_imit.meta_data = env_real.meta_data
         env_imit.add_pedestrian(env_real.position[:, t, :], env_real.velocity[:, t, :], env_real.destination, init=True)
+        
+        if ARGS.MODEL == 'SFM':
+            # way to fix bug
+            model = SFM(env_imit, ARGS)
+            model.s_mask = ~torch.isnan(model.initial_state).any(dim=1)
+            model.initial_state = model.initial_state[model.s_mask]
+            model.N = model.initial_state.shape[0]
+            model.simulator = model.init_simulator()
+        elif ARGS.MODEL == 'ORCA':
+            model = ORCA(env_imit, ARGS)
+
         for s in range(t + 1, min(t + 101, T)):
             mask = env_imit.mask[:, -1] & ~env_imit.arrive_flag[:, -1]
             action = torch.full((env_imit.num_pedestrians, 2), float('nan'), device=env_imit.device)
-            if mask.any():
-                action[mask, :], _ = model(pack_state(*env_imit.get_state())[mask])
-            env_imit.action(action[:, 0], action[:, 1], enable_nan_action=True)
-            into_flag = env_real.mask[:, s] & ~env_real.mask[:, s - 1]
+            if ARGS.MODEL == 'TECRL':
+                if mask.any():
+                        action[mask, :], _ = model(pack_state(*env_imit.get_state())[mask])
+                env_imit.action(action[:, 0], action[:, 1], enable_nan_action=True)
+            elif ARGS.MODEL == 'SFM' or 'ORCA':
+                if mask.any():  
+                    model() 
+            into_flag = env_real.mask[:, s] & ~env_real.mask[:, s - 1] # (N,)
             if into_flag.any():
                 env_imit.position[into_flag, -1, :] = env_real.position[into_flag, s, :]
                 env_imit.velocity[into_flag, -1, :] = env_real.velocity[into_flag, s, :]
@@ -77,6 +97,11 @@ if __name__ == '__main__':
                 env_imit.destination[into_flag, :] = env_real.destination[into_flag, :]
                 env_imit.arrive_flag[into_flag, -1] = ((env_real.position[into_flag, s, :] - env_real.destination[into_flag, :]).norm(dim=-1) < env_real.ped_radius)
                 env_imit.mask[into_flag, -1] = True
+        
+        # Compare real and imit env
+        generate_gif(env_real, 'env_real.gif', start_time=t+1, final_time=min(t + 101, T) - 1, xrange=(5, 25), yrange=(15, 35))
+        generate_gif(env_imit, 'env_imit.gif', xrange=(5, 25), yrange=(15, 35))
+        break
 
         # evaluate the CAP
         for i, j in CAP_start[:, :, t].nonzero():
@@ -94,5 +119,5 @@ if __name__ == '__main__':
 
             pbar.set_postfix(dict(TEC=np.mean(TECs), Collision=np.mean(Collisions)))
     
-    print(TECs, Collisions)    
+    # print(TECs, Collisions)    
     print(f'TEC = {np.mean(TECs)}, #Collision = {np.mean(Collisions)}')
