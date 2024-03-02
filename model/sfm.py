@@ -62,7 +62,7 @@ class SFM(torch.nn.Module):
     
     return simulator
   
-  def forward(self, index=-2):
+  def forward(self, index=-1):
     # (x, y, v_x, v_y, d_x, d_y, [tau])
     self.simulator.step_once()
 

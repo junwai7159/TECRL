@@ -78,13 +78,16 @@ if __name__ == '__main__':
             model.simulator = model.init_simulator()
         elif ARGS.MODEL == 'ORCA':
             model = ORCA(env_imit, ARGS)
-
+        # t = 3, 4 ~ 104 - 1
+        
         for s in range(t + 1, min(t + 101, T)):
             mask = env_imit.mask[:, -1] & ~env_imit.arrive_flag[:, -1]
-            action = torch.full((env_imit.num_pedestrians, 2), float('nan'), device=env_imit.device)
+            if s == t + 1:
+                
             if ARGS.MODEL == 'TECRL':
+                action = torch.full((env_imit.num_pedestrians, 2), float('nan'), device=env_imit.device)
                 if mask.any():
-                        action[mask, :], _ = model(pack_state(*env_imit.get_state())[mask])
+                    action[mask, :], _ = model(pack_state(*env_imit.get_state())[mask])
                 env_imit.action(action[:, 0], action[:, 1], enable_nan_action=True)
             elif ARGS.MODEL == 'SFM' or 'ORCA':
                 if mask.any():  
@@ -99,7 +102,7 @@ if __name__ == '__main__':
                 env_imit.mask[into_flag, -1] = True
         
         # Compare real and imit env
-        generate_gif(env_real, 'env_real.gif', start_time=t+1, final_time=min(t + 101, T) - 1, xrange=(5, 25), yrange=(15, 35))
+        generate_gif(env_real, 'env_real.gif', start_time=t, final_time=min(t + 101, T), xrange=(5, 25), yrange=(15, 35))
         generate_gif(env_imit, 'env_imit.gif', xrange=(5, 25), yrange=(15, 35))
         break
 
