@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import logging
 from utils.utils import xy2rscnt, mod2pi, rotate, get_ttcmd
 
@@ -31,6 +32,8 @@ class Pedsim:
 
         self.ped_radius = 0.3
         self.obstacle_radius = 0.1
+        self.pref_speed = 1.33
+        self.max_speed = 2.5
 
     def add_obstacle(self, obstacle, init=False):
         """
@@ -188,12 +191,15 @@ class Pedsim:
         :return:
         """
         assert idx.shape[0] == self.num_pedestrians, "id 维度错误! "
-        raise NotImplementedError
-
-        self.position = self.position[not idx]
-        self.velocity = self.velocity[not idx]
-        self.destination = self.destination[not idx]
-        self.arrive_flag = self.arrive_flag[not idx]
+        not_idx = torch.logical_not(idx)
+        
+        self.position = self.position[not_idx]
+        self.velocity = self.velocity[not_idx]
+        self.raw_velocity = self.raw_velocity[not_idx]
+        self.direction = self.direction[not_idx]
+        self.destination = self.destination[not_idx]
+        self.mask = self.mask[not_idx]
+        self.arrive_flag = self.arrive_flag[not_idx]
         self.num_pedestrians -= torch.sum(idx)
 
         logging.debug(f"删除了 {torch.sum(idx)} 个行人, 场景中共 {self.num_pedestrians} 个行人. ")
@@ -371,6 +377,13 @@ class Pedsim:
             
         position_ = self.position[:, -1, :] + velocity_ * self.meta_data['time_unit']
         
+        # scale to v_max 
+        speed_ = torch.norm(velocity_, dim=-1)  # (N, 1)
+
+        if torch.sum(speed_ > self.max_speed) > 0:    
+            scale = self.pref_speed / speed_
+            velocity_[speed_ > self.pref_speed, :] *= scale[speed_ > self.pref_speed].unsqueeze(1).repeat(1,2)
+
         self.velocity = torch.cat([self.velocity, velocity_.view(-1, 1, 2)], dim=1)
         self.direction = torch.cat([self.direction, direction_.view(-1, 1, 1)], dim=1)
         self.position = torch.cat([self.position, position_.view(-1, 1, 2)], dim=1)

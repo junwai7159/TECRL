@@ -19,8 +19,6 @@ def unpack_state(s):  # (N, 169) -> (N, 1) & (N, 8) & (N, 20, 8)
 
 ########## ENVS ##########
 # 定义行人、障碍物、地图
-scenario_list = ['CIRCLE', 'CORRIDOR', 'CROSSING', 'RANDOM']
-
 def init_ped_circle(ARGS):
     angles = np.linspace(0, 2*np.pi, ARGS.NUM_PED, endpoint=False)
     positions = [[round(ARGS.SIZE_ENV * np.cos(theta), 4), round(ARGS.SIZE_ENV * np.sin(theta), 4)] for theta in angles]
@@ -389,6 +387,7 @@ def mod2pi(delta_angle):
     return torch.remainder(delta_angle + np.pi, 2 * np.pi) - np.pi
 
 
+########## METRIC ##########
 def get_ttcmd(env, TTC_MAX=20.0, FRIEND_DIS=5.0, FRIEND_RATIO=0.7):
     """
     calculate the TTC and MD between N*N pairs of pedestrians at T steps, return the MD, TTC, and MASK

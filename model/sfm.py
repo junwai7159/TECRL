@@ -14,8 +14,6 @@ class SFM(torch.nn.Module):
     self.obstacle = self.init_obstacle()  # (M * 4, 4)
     self.simulator = self.init_simulator()
 
-    self.s_mask = None
-
   def init_state(self):
     # (px, py, vx, vy, gx, gy)
     initial_state = torch.zeros((self.N, 6))
@@ -67,10 +65,6 @@ class SFM(torch.nn.Module):
     self.simulator.step_once()
 
     state = torch.tensor(self.simulator.get_states()[0], dtype=torch.float32).permute(1, 0, 2)  # (N, T, 7)
-    if self.s_mask is not None:
-      state1 = torch.full((self.env.num_pedestrians, state.shape[1], 7), float('nan')) 
-      state1[self.s_mask] = state
-      state = state1
 
     position_ = state[:, index, 0:2] # (N, 2)
     velocity_ = state[:, index, 2:4] # (N, 2)
@@ -83,7 +77,6 @@ class SFM(torch.nn.Module):
     direction_ = torch.atan2(velocity_[:, 1], velocity_[:, 0]).unsqueeze(1)  # (N, 1)
     
     self.env.position = torch.cat([self.env.position, position_.unsqueeze(1)], dim=1) # (N, T, 2)
-    # print('POOOO',self.env.position[0, index-1], position_[0, index-1], self.env.position.shape, self.env.num_steps)
     self.env.velocity = torch.cat([self.env.velocity, velocity_.unsqueeze(1)], dim=1) # (N, T, 2)
     self.env.arrive_flag = torch.cat([self.env.arrive_flag, arrive_flag_.unsqueeze(1)], dim=1)  # (N,T)
     self.env.mask = torch.cat([self.env.mask, mask_.unsqueeze(1)], dim=1) # (N, T)

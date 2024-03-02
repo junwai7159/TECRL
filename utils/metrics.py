@@ -1,11 +1,14 @@
 import torch
+import numpy as np
 import os
+import math
 import pickle
-from envs.pedsim import Pedsim
 from tqdm import tqdm
+
+from envs.pedsim import Pedsim
 from utils.utils import mod2pi, get_ttcmd
 
-
+# find collision avoidance behavior
 def find_CAP(env, D_max=0.45, T_max=3.5, T_reac=0.3):
     # D_max: social distancing, the distance people tolerate others encroaching on their side
     # T_max: avoidance lead time, temporary response range of pedestrians to future collisions
@@ -44,6 +47,149 @@ def find_CAP(env, D_max=0.45, T_max=3.5, T_reac=0.3):
 
     return CAP_flag
 
+##### Microscopic Metrics #####
+def calc_collision_rate(env_imit):
+    N, T, _ = env_imit.position.shape
+    num_collided_agents = []
+
+    for t in range(T):
+        collision_agent_table = torch.full((N,), False)
+        for i in range(N):
+            for j in range(i + 1, N):
+                if env_imit.mask[i, t] and env_imit.mask[j, t]:
+                    if torch.norm(env_imit.position[i, t, :] - env_imit.position[j, t, :], dim=-1) <= (2 * env_imit.ped_radius) ** 2:
+                        collision_agent_table[i] = True
+                        collision_agent_table[j] = True
+        num_collided_agents.append(torch.sum(collision_agent_table).item())
+
+    return torch.mean(torch.tensor(num_collided_agents) / N)
+
+def calc_displacement(env_real=None, env_imit=None, imit_agent_mask=None, t=None, T=None):
+    real_displacement = []
+    imit_displacement = []
+    
+    if env_real is not None:
+        for id, pos in enumerate(env_real.position[imit_agent_mask, t:min(t + 101, T), :]):
+            real_displacement.append(torch.sum(torch.norm(torch.diff(pos[env_real.mask[imit_agent_mask[id], t:min(t + 101, T)], :], dim=0), dim=1)).item())
+    for id, pos in enumerate(env_imit.position):
+        imit_displacement.append(torch.sum(torch.norm(torch.diff(pos[env_imit.mask[id, :], :], dim=0), dim=1)).item())
+        
+    if env_real is not None:
+        displacement = torch.mean(torch.abs(torch.tensor(real_displacement) - torch.tensor(imit_displacement)))
+    else:
+        displacement = torch.mean(torch.tensor(imit_displacement))
+    return displacement
+
+def calc_perp_dev_distance(env_real=None, env_imit=None, imit_agent_mask=None, t=None, T=None):
+    real_perp_dev_distance = []
+    imit_perp_dev_distance = []
+
+    # dist = |Ax_0 + By_0 + C| / sqrt(A^2 + B^2)
+    # A = y_2 - y_1; B = x_1 - x_2; C = x-2 * y_1 - x_1 * y_2
+    if env_real is not None:
+        for id, pos in enumerate(env_real.position[imit_agent_mask, t:min(t + 101, T), :]):
+            p0 = pos[env_real.mask[imit_agent_mask[id], t:min(t + 101, T)], :]
+            p1 = p0[0]
+            p2 = env_real.destination[imit_agent_mask[id]]
+
+            A = p2[1] - p1[1]
+            B = p1[0] - p2[1]
+            C = p2[0] * p1[1] - p1[0] * p2[1]
+            real_perp_dev_distance.append(torch.sum(torch.abs(A * p0[:, 0] + B * p0[:, 1] + C) / torch.sqrt(A**2 + B**2)).item())
+
+    for id, pos in enumerate(env_imit.position):
+        p0 = pos[env_imit.mask[id, :], :]
+        p1 = pos[0, :]
+        p1 = p0[0]
+        p2 = env_imit.destination[id]
+        A = p2[1] - p1[1]
+        B = p1[0] - p2[1]
+        C = p2[0] * p1[1] - p1[0] * p2[1]
+        imit_perp_dev_distance.append(torch.sum(torch.abs(A * p0[:, 0] + B * p0[:, 1] + C) / torch.sqrt(A**2 + B**2)).item())        
+    
+    if env_real is not None:
+        perp_dev_distance = torch.mean(torch.abs(torch.tensor(real_perp_dev_distance) - torch.tensor(imit_perp_dev_distance)))
+    else:
+        perp_dev_distance = torch.mean(torch.tensor(imit_perp_dev_distance))
+    return perp_dev_distance
+
+def calc_v_locomotion(env_real=None, env_imit=None, imit_agent_mask=None, t=None, T=None):
+    real_v_locomotion = []
+    imit_v_locomotion = []
+
+    if env_real is not None:
+        for id, vel in enumerate(env_real.velocity[imit_agent_mask, t:min(t + 101, T), :]):
+            real_v_locomotion.append(torch.sum(torch.abs(torch.diff(torch.norm(vel[env_real.mask[imit_agent_mask[id], t:min(t + 101, T)], :], dim=1)))).item())
+    for id, vel in enumerate(env_imit.velocity):
+        imit_v_locomotion.append(torch.sum(torch.abs(torch.diff(torch.norm(vel[env_imit.mask[id, :], :], dim=1)))).item())
+        
+    if env_real is not None:
+        v_locomotion = torch.mean(torch.abs(torch.tensor(real_v_locomotion) - torch.tensor(imit_v_locomotion)))
+    else:
+        v_locomotion = torch.mean(torch.tensor(imit_v_locomotion))
+    return v_locomotion
+
+def calc_a_locomotion(env_real=None, env_imit=None, imit_agent_mask=None, t=None, T=None):
+    real_a_locomotion = []
+    imit_a_locomotion = []
+    
+    # angle_diff = (angle1 - angle2 + pi) % 2pi - pi
+    if env_real is not None:
+        for id, ang in enumerate(env_real.direction[imit_agent_mask, t:min(t + 101, T), :]):
+            real_a_locomotion.append(torch.sum(torch.abs((torch.diff(ang[env_real.mask[imit_agent_mask[id], t:min(t + 101, T)]].squeeze(dim=1)) + np.pi) % (2 * np.pi) - np.pi)).item())
+    for id, ang in enumerate(env_imit.direction):
+        imit_a_locomotion.append(torch.sum(torch.abs((torch.diff(ang[env_imit.mask[id, :]].squeeze(dim=1)) + np.pi) % (2 * np.pi) - np.pi)).item())
+    
+    if env_real is not None:
+        a_locomotion = torch.mean(torch.abs(torch.tensor(real_a_locomotion) - torch.tensor(imit_a_locomotion)))
+    else:
+        a_locomotion = torch.mean(torch.tensor(imit_a_locomotion))
+    return a_locomotion
+
+def calc_energy(env_real=None, env_imit=None, imit_agent_mask=None, t=None, T=None):
+    real_energy = []
+    imit_energy = []
+
+    dt = env_imit.meta_data['time_unit']
+    mass = 60
+    e_s = 2.23
+    e_w = 1.26
+
+    if env_real is not None:
+        for id, vel in enumerate(env_real.velocity[imit_agent_mask, t:min(t + 101, T), :]):
+            real_energy.append(torch.sum(mass * (e_s + e_w * torch.norm(vel[env_real.mask[imit_agent_mask[id], t:min(t + 101, T)], :], dim=1) ** 2) * dt).item())
+    for id, vel in enumerate(env_imit.velocity):
+        imit_energy.append(torch.sum(mass * (e_s + e_w * torch.norm(vel[env_imit.mask[id, :], :], dim=1) ** 2) * dt).item())
+
+    if env_real is not None:
+        energy = torch.mean(torch.abs(torch.tensor(real_energy) - torch.tensor(imit_energy)))
+    else:
+        energy = torch.mean(torch.tensor(imit_energy))
+    return energy
+
+def calc_steer_energy(env_real=None, env_imit=None, imit_agent_mask=None, t=None, T=None):
+    real_steer_energy = []
+    imit_steer_energy = []
+
+    dt = env_imit.meta_data['time_unit']
+    mass = 60
+    e_s = 2.23
+    e_w = 1.26
+
+    if env_real is not None:
+        for id, vel in enumerate(env_real.velocity[imit_agent_mask, t:min(t + 101, T), :]):
+            real_steer_energy.append(torch.sum(mass * (e_s + e_w * torch.norm(torch.diff(vel[env_real.mask[imit_agent_mask[id], t:min(t + 101, T)], :], dim=1), dim=1) ** 2) * dt).item())
+    for id, vel in enumerate(env_imit.velocity):
+        imit_steer_energy.append(torch.sum(mass * (e_s + e_w * torch.norm(torch.diff(vel[env_imit.mask[id, :], :], dim=1), dim=1) ** 2) * dt).item())
+
+    if env_real is not None:
+        steer_energy = torch.mean(torch.abs(torch.tensor(real_steer_energy) - torch.tensor(imit_steer_energy)))
+    else:
+        steer_energy = torch.mean(torch.tensor(imit_steer_energy))
+    return steer_energy
+
+
+# TEC: total effort consumption
 def calc_TEC(dt, position, destination, mass=60, radius=0.3, lambda_E=1e-3, lambda_W=1e-2, lambda_M=1.0):
     """
     calculate Total Effort Consumption (TEC) of a trajectory
@@ -73,7 +219,62 @@ def calc_TEC(dt, position, destination, mass=60, radius=0.3, lambda_E=1e-3, lamb
     TEC = lambda_E * EC + lambda_W * AW + lambda_M * ME
     return TEC
 
+# ADE: average displacement error
+def calc_ade(env_real, env_imit, agent_mask, t, T):
+    real_position = env_real.position[agent_mask, t + 1:min(t + 101, T)]
+    imit_position = env_imit.position[:, 1:]
+    N = env_imit.num_pedestrians
 
+    ADEs = []
+    for i in range(N):
+        real_pos = real_position[i]
+        imit_pos = imit_position[i]
+
+        real_mask = ~torch.isnan(real_pos).any(dim=1)
+        imit_mask = ~torch.isnan(imit_pos).any(dim=1)
+        mask = imit_mask if torch.sum(imit_mask) < torch.sum(real_mask) else real_mask  # truncate
+
+        # weird bug, align length
+        min_t = min(mask.shape[0], real_pos.shape[0], imit_pos.shape[0])
+        if not (mask.shape[0] == real_pos.shape[0] == imit_pos.shape[0]):
+            mask = mask[:min_t]
+            real_pos = real_pos[:min_t]
+            imit_pos = imit_pos[:min_t]
+
+        ade = torch.mean(torch.sqrt(torch.sum((real_pos[mask] - imit_pos[mask])**2, dim=1)))
+        if torch.isnan(ade):
+            continue
+
+        ADEs.append(ade.item())
+
+    return np.mean(ADEs)
+
+# FDE: final displacement error
+def calc_fde(env_real, env_imit, agent_mask, t, T):
+    real_position = env_real.position[agent_mask, t + 1:min(t + 101, T)]
+    imit_position = env_imit.position[:, 1:]
+    N = env_imit.num_pedestrians
+
+    fde = []
+    for i in range(N):
+        real_pos = real_position[i]
+        imit_pos = imit_position[i]
+
+        real_mask = ~torch.isnan(real_pos).any(dim=1)
+        imit_mask = ~torch.isnan(imit_pos).any(dim=1)
+        
+        real_pos = real_pos[real_mask]
+        imit_pos = imit_pos[imit_mask]
+        
+        # if real_pos.shape[0] == 0 or imit_pos.shape[0] == 0:
+        #     continue
+
+        fde.append(torch.sqrt(torch.sum((real_pos[-1] - imit_pos[-1])**2, dim=-1)).item())
+
+    return np.mean(fde)
+
+
+##### misc. #####
 def imitate_env(env_real, action_func, start_index=0, end_index=-1, show_tqdm=True, drop_nan=False, exit_with_real=False, cheat=False):
     """
     模仿 env_real, 从 start_index 帧开始到 end_index 帧 (含) 结束

@@ -14,15 +14,16 @@ class ORCA(torch.nn.Module):
     self.rvo_agents = self.init_state()  
 
   def init_state(self):
-    rvo_agents = [None] * self.N
+    rvo_agents = [float('nan')] * self.N
     
     for agent_id in range(self.N):
       p = self.env.position[agent_id, -1, :]
       g = self.env.destination[agent_id, :]
       v_p = (g - p) / torch.norm(g - p)
 
-      rvo_agents[agent_id] = self.simulator.addAgent(tuple(p.tolist()))
-      self.simulator.setAgentPrefVelocity(rvo_agents[agent_id], tuple(v_p.tolist()))
+      if ~torch.isnan(v_p).any():
+        rvo_agents[agent_id] = self.simulator.addAgent(tuple(p.tolist()))
+        self.simulator.setAgentPrefVelocity(rvo_agents[agent_id], tuple(v_p.tolist()))
 
     return rvo_agents
 
@@ -45,14 +46,14 @@ class ORCA(torch.nn.Module):
     return rvo_obstacles
 
   def init_simulator(self):
-    simulator = rvo2.PyRVOSimulator(timeStep=0.15, neighborDist=1.5, maxNeighbors=self.ARGS.NUM_PED,
-                                    timeHorizon=1.5, timeHorizonObst=10, radius=self.env.ped_radius, maxSpeed=2.0) 
+    simulator = rvo2.PyRVOSimulator(timeStep=0.08, neighborDist=1.5, maxNeighbors=10,
+                                    timeHorizon=1.5, timeHorizonObst=10, radius=self.env.ped_radius, maxSpeed=2.5) 
     return simulator
     
-  def forward(self):
+  def forward(self, index=-1):
     self.simulator.doStep()
     
-    position_, velocity_ = torch.zeros(self.N, 2), torch.zeros(self.N, 2)
+    position_, velocity_ = torch.full((self.N, 2), float('nan')), torch.full((self.N, 2), float('nan'))
     for agent_id in range(self.N):
       p = torch.tensor(self.simulator.getAgentPosition(agent_id))
       g = self.env.destination[agent_id, :]
@@ -63,7 +64,7 @@ class ORCA(torch.nn.Module):
       v_p = ((g - p) / torch.norm(g - p) if torch.norm(g - p) > 1.0 else (g - p)) * 1.33
       self.simulator.setAgentPrefVelocity(self.rvo_agents[agent_id], tuple(v_p.tolist()))
 
-    arrive_flag_ = torch.where(self.env.mask[:, -1], torch.norm(self.env.position[:, -1, :] - self.env.destination, dim=-1) 
+    arrive_flag_ = torch.where(self.env.mask[:, index], torch.norm(self.env.position[:, index, :] - self.env.destination, dim=-1) 
                                < self.env.ped_radius, self.env.arrive_flag[:, -1])
     mask_ = ~arrive_flag_
     
@@ -72,7 +73,6 @@ class ORCA(torch.nn.Module):
     direction_ = torch.atan2(velocity_[:, 1], velocity_[:, 0]).unsqueeze(1)  # (N, 1)
 
     self.env.position = torch.cat([self.env.position, position_.unsqueeze(1)], dim=1) # (N, T, 2)
-    print('POOOO',self.env.position[0, -1], position_[0, -1], self.env.num_steps)
     self.env.velocity = torch.cat([self.env.velocity, velocity_.unsqueeze(1)], dim=1) # (N, T, 2)
     self.env.arrive_flag = torch.cat([self.env.arrive_flag, arrive_flag_.unsqueeze(1)], dim=1)  # (N,T)
     self.env.mask = torch.cat([self.env.mask, mask_.unsqueeze(1)], dim=1) # (N, T)

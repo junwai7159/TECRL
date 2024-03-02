@@ -30,7 +30,7 @@ def fig2array(fig):
     image = np.asarray(image)
     return image[:, :, :3]
 
-def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None, speed_up=1, downsample=1, xrange=(-20, 20), yrange=(-20, 20), mpp=0.05, show_tqdm_flag=True):
+def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None, speed_up=1, downsample=1, xrange=(-20, 20), yrange=(-20, 20), mpp=0.05, show_tqdm_flag=True, imit_agent_mask=None):
     """
     将 env 生成 gif 图像, 存储为 save_path. 若指定 focus_id, 还可实现视野跟随 focus_id 移动
     也实现了旋转视角的功能, 但是很晕所以算了
@@ -89,7 +89,11 @@ def generate_gif(env, save_path, focus_id=None, start_time=None, final_time=None
                 color = (0, 0, 240) if p != focus_id else (240, 0, 0)
                 cv2.circle(im, (x, y), int(env.ped_radius / mpp), color, thickness=-1)
                 cv2.circle(im, (x, y), int(env.ped_radius / mpp), (0, 0, 0), thickness=1)
-                cv2.putText(im, str(p), (x+int(env.ped_radius/mpp), y+5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+                if imit_agent_mask is not None:
+                    p_real = imit_agent_mask[p].item()
+                else:
+                    p_real = p
+                cv2.putText(im, str(p_real), (x+int(env.ped_radius/mpp), y+5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
 
                 traj = env.position[p, max(0, t - int(2. * fps)):t+1, :]
                 traj = traj[env.mask[p, max(0, t - int(2. * fps)):t+1]]

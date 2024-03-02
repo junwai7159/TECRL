@@ -7,6 +7,7 @@ from pyqtgraph.dockarea.DockArea import DockArea
 from pyqtgraph.parametertree import ParameterTree, Parameter, parameterTypes
 from pyqtgraph import mkPen, mkColor
 from utils.utils import rotate, init_env, get_args
+from utils.metrics import *
 
 class Visualization:
     win_title = 'RL4Pedsim'
@@ -283,6 +284,14 @@ class Visualization:
         # 场景信息
         info = dict(
             meanSpeed = self.env.velocity[self.env.mask[:, time_step], time_step, :].norm(dim=-1).mean().item(),
+
+            collisionRate = calc_collision_rate(self.env).item(),
+            displacement = calc_displacement(env_imit=self.env).item(),
+            perpendicularDeviationDistance = calc_perp_dev_distance(env_imit=self.env).item(),
+            velocityLocomotion = calc_v_locomotion(env_imit=self.env).item(),
+            angleLocomotion = calc_a_locomotion(env_imit=self.env).item(),
+            energy = calc_energy(env_imit=self.env).item(),
+            steerEnergy = calc_steer_energy(env_imit=self.env).item()
         )
 
         self.ctrl_widget['info'].setData(info)
