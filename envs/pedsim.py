@@ -247,6 +247,24 @@ class Pedsim:
         mental = ang2des * speed * dt  # (N,)
         reward['MENTAL'] = {'SCALE': self.args.RW_MENTAL, 'VALUE': mental}
 
+        # FLOOD
+        v = self.velocity[:, index, :].norm(dim=-1)
+        w = mod2pi(self.direction[:, index, 0] - self.direction[:, index - 1, 0]) # / self.meta_data['time_unit']
+        reward['SMOOTH_V'] = {'SCALE': -4.0, 'VALUE': (v - v.clamp(-0.5, 1.5)).abs()}
+        reward['SMOOTH_W'] = {'SCALE': -1.0, 'VALUE': (w - w.clamp(-np.pi/4, np.pi/4)).abs()}
+
+        # # Exponential Velocity Matching
+        # v = self.velocity[:, index, :]
+        # dp = self.destination - self.position[:, index, :]
+        # v_pref = dp / self.meta_data['time_unit']
+        # speed = v_pref.norm(dim=-1)
+        # speed_mask = speed > self.pref_speed
+        # if torch.sum(speed_mask) > 0:
+        #     scale = self.pref_speed / speed
+        #     v_pref[speed_mask, :] *= scale[speed_mask].unsqueeze(1).repeat(1,2)
+        # e0 = torch.norm(v_pref - v, dim=-1)
+        # reward['KDMA'] = {'SCALE': 0.02, 'VALUE': torch.exp(-0.85 * e0)}
+
         # # CS-DRL
         # delta_l = (self.destination - self.position[:, index - 1, :]).norm(dim=-1) - (self.destination - self.position[:, index, :]).norm(dim=-1)
         # reward['GOAL'] = {'SCALE': 4.0, 'VALUE': delta_l}

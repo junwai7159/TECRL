@@ -52,6 +52,18 @@ class Critic(torch.nn.Module):
         v = self.seq(s)
         return v
 
+class Discriminator(torch.nn.Module):
+    def __init__(self, h_seq=(128, 128, 128, 128)):
+        super(Discriminator, self).__init__()
+        # input = state_dim + action_dim
+        self.seq = MLP((169 + 2, *h_seq, 1), act=nn.Tanh, act_out=torch.nn.Identity, gain_out=0.1)
+    
+    def forward(self, s, action):
+        return torch.sigmoid(self.get_logits(s, action))
+
+    def get_logits(self, s, action):
+        sa = torch.cat([s, action], dim=-1)
+        return self.seq(sa)
 
 class PPO(torch.nn.Module):
     def __init__(self, ARGS):
@@ -193,7 +205,6 @@ class PPO(torch.nn.Module):
 
             reward, detail_rewards = env.action(action[:, 0], action[:, 1])
             assert not torch.any(torch.isnan(reward)), f"reward nan! {reward}"
-            # self.writer.add_scalar('Reward / Timestep', torch.mean(reward), self.time_step)
 
             total_reward += torch.mean(reward).item()
             for key, rwd in detail_rewards.items():
@@ -226,6 +237,8 @@ class PPO(torch.nn.Module):
         self.writer.add_scalar('Environment/Energy', total_detail_reward['ENERGY'], self.episode)
         self.writer.add_scalar('Environment/Work', total_detail_reward['WORK'], self.episode)
         self.writer.add_scalar('Environment/Mental', total_detail_reward['MENTAL'], self.episode)
+        # self.writer.add_scalar('Environment/Smooth_V', total_detail_reward['SMOOTH_V'], self.episode)
+        # self.writer.add_scalar('Environment/Smooth_W', total_detail_reward['SMOOTH_W'], self.episode)
         self.writer.add_scalar('Environment/Episode Length', step, self.episode)
 
         if pg_loss:

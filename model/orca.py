@@ -61,7 +61,9 @@ class ORCA(torch.nn.Module):
       position_[agent_id, :] = p
       velocity_[agent_id, :] = v
 
-      v_p = ((g - p) / torch.norm(g - p) if torch.norm(g - p) > 1.0 else (g - p)) * 1.33
+    # try to remove it
+      v_p = v
+      # v_p = ((g - p) / torch.norm(g - p) if torch.norm(g - p) > 1.0 else (g - p)) * 1.33
       self.simulator.setAgentPrefVelocity(self.rvo_agents[agent_id], tuple(v_p.tolist()))
 
     arrive_flag_ = torch.where(self.env.mask[:, index], torch.norm(self.env.position[:, index, :] - self.env.destination, dim=-1) 

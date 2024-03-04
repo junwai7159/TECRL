@@ -11,9 +11,12 @@ from model.ppo import PPO
 from envs.pedsim import Pedsim
 from utils.utils import init_env, get_args, set_seed, pack_state
 from utils.visualization_cv import generate_gif
-
+from utils.magail import load_expert_data
 
 if __name__ == '__main__':
+    # load expert dataset
+    load_expert_data()
+    
     # initialization
     ARGS = get_args()
     set_seed(ARGS.SEED)
@@ -34,6 +37,7 @@ if __name__ == '__main__':
         # generate environment
         env = Pedsim(ARGS)
         init_env(env, ARGS)
+
         # if episode == 1:
         #     model.writer.add_graph(model, torch.randn(env.num_pedestrians, 169))
 

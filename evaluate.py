@@ -143,4 +143,4 @@ if __name__ == '__main__':
                               FDE=(np.mean(FDEs))
                         ))
         # break
-    # print(f'ADE = {np.mean(ADEs)}, FDE = {np.mean(FDEs)}')
+    print(f'Col={np.mean(Collision_rates)}, Dis={np.mean(Displacements)}, P_d_dist={np.mean(Perp_dev_distances)}, V_loc={np.mean(V_locomotions)}, A_loc={np.mean(A_locomotions)}, Energy={np.mean(Energys)}, S_energy={np.mean(Steer_energys)}, ADE = {np.mean(ADEs)}, FDE = {np.mean(FDEs)}')
